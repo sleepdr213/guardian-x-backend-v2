@@ -15,6 +15,15 @@ app.get("/status", (req, res) => {
   res.json({ status: "ok", system: "Guardian X" });
 });
 
+// 🚨 Health check (add this)
+app.get("/health", (req, res) => {
+  res.json({
+    status: "ok",
+    system: "guardian-x",
+    uptime: process.uptime()
+  });
+});
+
 // 🚨 Alert endpoint
 app.post("/alert", (req, res) => {
   const data = req.body;
