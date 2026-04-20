@@ -4,105 +4,87 @@ const jwt = require("jsonwebtoken");
 const bcrypt = require("bcryptjs");
 
 const app = express();
+const PORT = process.env.PORT || 3000;
+
 app.use(cors());
 app.use(express.json());
 
-// 🔐 AUTH CONFIG
-const JWT_SECRET = "guardian_secret_key";
+// =========================
+// TEMP "DATABASE" (for testing)
+// =========================
 const users = [];
 
-// ✅ Test route
+// =========================
+// HEALTH CHECK
+// =========================
 app.get("/", (req, res) => {
-  res.send("Guardian X backend is running 🚀");
+  res.json({ message: "Guardian is live 🚀" });
 });
 
-// 👤 REGISTER
-app.post("/register", async (req, res) => {
-  const { email, password } = req.body;
+// =========================
+// REGISTER USER
+// =========================
+app.post("/api/register", async (req, res) => {
+  try {
+    const { email, password } = req.body;
 
-  const hashedPassword = await bcrypt.hash(password, 10);
+    if (!email || !password) {
+      return res.status(400).json({ message: "Missing email or password" });
+    }
 
-  const user = {
-    id: Date.now(),
-    email,
-    password: hashedPassword
-  };
+    const existingUser = users.find(u => u.email === email);
+    if (existingUser) {
+      return res.status(400).json({ message: "User already exists" });
+    }
 
-  users.push(user);
+    const hashedPassword = await bcrypt.hash(password, 10);
 
-  res.json({
-    success: true,
-    message: "User registered"
-  });
-});
+    const user = {
+      id: Date.now(),
+      email,
+      password: hashedPassword
+    };
 
-// 🔑 LOGIN
-app.post("/login", async (req, res) => {
-  const { email, password } = req.body;
+    users.push(user);
 
-  const user = users.find(u => u.email === email);
-
-  if (!user) {
-    return res.json({ success: false, message: "User not found" });
+    res.json({ message: "User created successfully" });
+  } catch (err) {
+    res.status(500).json({ message: "Server error" });
   }
+});
 
-  const isValid = await bcrypt.compare(password, user.password);
+// =========================
+// LOGIN USER
+// =========================
+app.post("/api/login", async (req, res) => {
+  try {
+    const { email, password } = req.body;
 
-  if (!isValid) {
-    return res.json({ success: false, message: "Wrong password" });
+    const user = users.find(u => u.email === email);
+    if (!user) {
+      return res.status(400).json({ message: "Invalid credentials" });
+    }
+
+    const isMatch = await bcrypt.compare(password, user.password);
+    if (!isMatch) {
+      return res.status(400).json({ message: "Invalid credentials" });
+    }
+
+    const token = jwt.sign(
+      { id: user.id, email: user.email },
+      "secret_key_guardian",
+      { expiresIn: "1h" }
+    );
+
+    res.json({ token });
+  } catch (err) {
+    res.status(500).json({ message: "Server error" });
   }
-
-  const token = jwt.sign(
-    { id: user.id, email: user.email },
-    JWT_SECRET,
-    { expiresIn: "1h" }
-  );
-
-  res.json({
-    success: true,
-    token
-  });
 });
 
-// 📊 STATUS
-app.get("/status", (req, res) => {
-  res.json({ status: "ok", system: "Guardian X" });
-});
-
-// ❤️ HEALTH
-app.get("/health", (req, res) => {
-  res.json({
-    status: "ok",
-    system: "guardian-x",
-    uptime: process.uptime()
-  });
-});
-
-// 🚨 ALERT
-app.post("/alert", (req, res) => {
-  const data = req.body;
-  console.log("ALERT RECEIVED:", data);
-
-  res.json({
-    success: true,
-    message: "Alert received",
-    data: data
-  });
-});
-
-// 📷 CAMERA
-app.post("/camera", (req, res) => {
-  console.log("Camera event:", req.body);
-
-  res.json({
-    success: true,
-    message: "Camera data received"
-  });
-});
-
-// 🚀 START SERVER
-const PORT = process.env.PORT || 3000;
-
+// =========================
+// START SERVER
+// =========================
 app.listen(PORT, () => {
-  console.log("Server running on port", PORT);
+  console.log(`Guardian backend running on port ${PORT}`);
 });
