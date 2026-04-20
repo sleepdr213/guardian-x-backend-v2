@@ -1,13 +1,14 @@
 const express = require("express");
 const cors = require("cors");
+const jwt = require("jsonwebtoken");
+const bcrypt = require("bcryptjs");
 
 const app = express();
 app.use(cors());
 app.use(express.json());
 
-const jwt = require("jsonwebtoken");
-const bcrypt = require("bcryptjs");
-
+// 🔐 AUTH CONFIG
+const JWT_SECRET = "guardian_secret_key";
 const users = [];
 
 // ✅ Test route
@@ -15,6 +16,7 @@ app.get("/", (req, res) => {
   res.send("Guardian X backend is running 🚀");
 });
 
+// 👤 REGISTER
 app.post("/register", async (req, res) => {
   const { email, password } = req.body;
 
@@ -34,7 +36,7 @@ app.post("/register", async (req, res) => {
   });
 });
 
-
+// 🔑 LOGIN
 app.post("/login", async (req, res) => {
   const { email, password } = req.body;
 
@@ -52,7 +54,7 @@ app.post("/login", async (req, res) => {
 
   const token = jwt.sign(
     { id: user.id, email: user.email },
-    "guardian_secret_key",
+    JWT_SECRET,
     { expiresIn: "1h" }
   );
 
@@ -62,12 +64,12 @@ app.post("/login", async (req, res) => {
   });
 });
 
-// ✅ Status check
+// 📊 STATUS
 app.get("/status", (req, res) => {
   res.json({ status: "ok", system: "Guardian X" });
 });
 
-// 🚨 Health check (add this)
+// ❤️ HEALTH
 app.get("/health", (req, res) => {
   res.json({
     status: "ok",
@@ -76,7 +78,7 @@ app.get("/health", (req, res) => {
   });
 });
 
-// 🚨 Alert endpoint
+// 🚨 ALERT
 app.post("/alert", (req, res) => {
   const data = req.body;
   console.log("ALERT RECEIVED:", data);
@@ -88,7 +90,7 @@ app.post("/alert", (req, res) => {
   });
 });
 
-// 📷 Camera event (future use)
+// 📷 CAMERA
 app.post("/camera", (req, res) => {
   console.log("Camera event:", req.body);
 
@@ -98,6 +100,7 @@ app.post("/camera", (req, res) => {
   });
 });
 
+// 🚀 START SERVER
 const PORT = process.env.PORT || 3000;
 
 app.listen(PORT, () => {
