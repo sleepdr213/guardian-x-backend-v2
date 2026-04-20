@@ -53,6 +53,28 @@ app.post("/api/register", async (req, res) => {
   }
 });
 
+function verifyToken(req, res, next) {
+  const authHeader = req.headers["authorization"];
+
+  if (!authHeader) {
+    return res.status(401).json({ message: "No token provided" });
+  }
+
+  const token = authHeader.split(" ")[1];
+
+  if (!token) {
+    return res.status(401).json({ message: "Invalid token format" });
+  }
+
+  try {
+    const decoded = jwt.verify(token, "secret_key_guardian");
+    req.user = decoded;
+    next();
+  } catch (err) {
+    return res.status(403).json({ message: "Invalid or expired token" });
+  }
+}
+
 // =========================
 // LOGIN USER
 // =========================
@@ -80,6 +102,13 @@ app.post("/api/login", async (req, res) => {
   } catch (err) {
     res.status(500).json({ message: "Server error" });
   }
+});
+
+app.get("/api/profile", verifyToken, (req, res) => {
+  res.json({
+    message: "Protected data accessed successfully",
+    user: req.user
+  });
 });
 
 // =========================
