@@ -28,20 +28,14 @@ app.get("/", (req, res) => {
 });
 
 // =========================
-// REGISTER ROUTE
+// REGISTER ROUTE (TEST VERSION)
 // =========================
-app.post("/register", async (req, res) => {
-  const { name, email, password } = req.body;
-
-  if (!name || !email || !password) {
-    return res.status(400).json({
-      message: "All fields are required"
-    });
-  }
+app.post("/register", (req, res) => {
+  console.log("REGISTER BODY:", req.body);
 
   res.json({
     success: true,
-    message: "User registered successfully"
+    received: req.body
   });
 });
 
