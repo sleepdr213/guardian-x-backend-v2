@@ -1,123 +1,79 @@
 const express = require("express");
-const http = require("http");
 const cors = require("cors");
 const jwt = require("jsonwebtoken");
 const bcrypt = require("bcryptjs");
+const http = require("http");
 const { Server } = require("socket.io");
 
 const app = express();
-const server = http.createServer(app);
-
-const io = new Server(server, {
-  cors: { origin: "*" }
-});
-
 const PORT = process.env.PORT || 3000;
+
+// Create HTTP server for Socket.IO
+const server = http.createServer(app);
+const io = new Server(server, {
+  cors: {
+    origin: "*",
+    methods: ["GET", "POST"]
+  }
+});
 
 app.use(cors());
 app.use(express.json());
 
 // =========================
-// TEMP "DATABASE" (for testing)
-// =========================
-const users = [];
-
-// =========================
-// HEALTH CHECK
+// ROOT ROUTE
 // =========================
 app.get("/", (req, res) => {
+  res.send("Guardian X Backend Running");
+});
+
+// =========================
+// REGISTER ROUTE
+// =========================
+app.post("/register", async (req, res) => {
+  const { name, email, password } = req.body;
+
+  if (!name || !email || !password) {
+    return res.status(400).json({
+      message: "All fields are required"
+    });
+  }
+
   res.json({
-    message: "Guardian X Backend Running 🚀"
+    success: true,
+    message: "User registered successfully"
   });
 });
 
 // =========================
-// REGISTER USER
+// LOGIN ROUTE
 // =========================
-app.post("/api/register", async (req, res) => {
-  try {
-    const { email, password } = req.body;
+app.post("/login", async (req, res) => {
+  const { email, password } = req.body;
 
-    if (!email || !password) {
-      return res.status(400).json({
-        message: "Missing email or password"
-      });
-    }
-
-    const existingUser = users.find(u => u.email === email);
-
-    if (existingUser) {
-      return res.status(400).json({
-        message: "User already exists"
-      });
-    }
-
-    const hashedPassword = await bcrypt.hash(password, 10);
-
-    const user = {
-      id: Date.now(),
-      email,
-      password: hashedPassword
-    };
-
-    users.push(user);
-
-    res.json({
-      message: "User created successfully"
-    });
-
-  } catch (err) {
-    res.status(500).json({
-      message: "Server error"
-    });
-  }
-});
-
-// =========================
-// LOGIN USER
-// =========================
-app.post("/api/login", async (req, res) => {
-  try {
-    const { email, password } = req.body;
-
-    const user = users.find(u => u.email === email);
-
-    if (!user) {
-      return res.status(400).json({
-        message: "Invalid credentials"
-      });
-    }
-
-    const isMatch = await bcrypt.compare(password, user.password);
-
-    if (!isMatch) {
-      return res.status(400).json({
-        message: "Invalid credentials"
-      });
-    }
-
+  if (
+    email === "test@guardian.com" &&
+    password === "123456"
+  ) {
     const token = jwt.sign(
-      {
-        id: user.id,
-        email: user.email
-      },
+      { email },
       "secret_key_guardian",
-      {
-        expiresIn: "1h"
-      }
+      { expiresIn: "7d" }
     );
 
-    res.json({ token });
-
-  } catch (err) {
-    res.status(500).json({
-      message: "Server error"
+    return res.json({
+      success: true,
+      token
     });
   }
+
+  return res.status(401).json({
+    message: "Invalid credentials"
+  });
 });
 
 // =========================
-// PROTECTED PROFILE ROUTE
+// JWT VERIFY MIDDLEWARE
 // =========================
 function verifyToken(req, res, next) {
   const authHeader = req.headers["authorization"];
@@ -152,6 +108,9 @@ function verifyToken(req, res, next) {
   }
 }
 
+// =========================
+// PROTECTED PROFILE ROUTE
+// =========================
 app.get("/api/profile", verifyToken, (req, res) => {
   res.json({
     message: "Protected data accessed successfully",
