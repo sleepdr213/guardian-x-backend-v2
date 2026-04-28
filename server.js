@@ -2,23 +2,59 @@ const express = require("express");
 const cors = require("cors");
 const jwt = require("jsonwebtoken");
 const bcrypt = require("bcryptjs");
+const mongoose = require("mongoose");
 const http = require("http");
 const { Server } = require("socket.io");
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Create HTTP server for Socket.IO
+// =========================
+// MIDDLEWARE
+// =========================
+app.use(cors({
+  origin: "*",
+  methods: ["GET", "POST", "PUT", "DELETE"]
+}));
+
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+
+// =========================
+// MONGODB CONNECTION
+// =========================
+mongoose.connect(process.env.MONGODB_URI)
+  .then(() => console.log("MongoDB connected"))
+  .catch((err) => console.log("MongoDB connection error:", err));
+
+// =========================
+// USER MODEL
+// =========================
+const UserSchema = new mongoose.Schema({
+  email: {
+    type: String,
+    required: true,
+    unique: true
+  },
+  password: {
+    type: String,
+    required: true
+  }
+});
+
+const User = mongoose.model("User", UserSchema);
+
+// =========================
+// HTTP + SOCKET SETUP
+// =========================
 const server = http.createServer(app);
+
 const io = new Server(server, {
   cors: {
     origin: "*",
     methods: ["GET", "POST"]
   }
 });
-
-app.use(cors());
-app.use(express.json());
 
 // =========================
 // ROOT ROUTE
@@ -28,19 +64,50 @@ app.get("/", (req, res) => {
 });
 
 // =========================
-// REGISTER ROUTE (TEST VERSION)
+// REGISTER ROUTE (REAL DATABASE)
 // =========================
-app.post("/register", (req, res) => {
-  console.log("REGISTER BODY:", req.body);
+app.post("/register", async (req, res) => {
+  try {
+    const { email, password } = req.body;
 
-  res.json({
-    success: true,
-    received: req.body
-  });
+    if (!email || !password) {
+      return res.status(400).json({
+        error: "Missing email or password"
+      });
+    }
+
+    const existingUser = await User.findOne({ email });
+
+    if (existingUser) {
+      return res.status(400).json({
+        error: "User already exists"
+      });
+    }
+
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    const newUser = new User({
+      email,
+      password: hashedPassword
+    });
+
+    await newUser.save();
+
+    res.json({
+      success: true,
+      message: "User registered successfully"
+    });
+
+  } catch (err) {
+    console.log(err);
+    res.status(500).json({
+      error: "Server error"
+    });
+  }
 });
 
 // =========================
-// LOGIN ROUTE
+// LOGIN ROUTE (TEMP TEST)
 // =========================
 app.post("/login", async (req, res) => {
   const { email, password } = req.body;
@@ -103,7 +170,7 @@ function verifyToken(req, res, next) {
 }
 
 // =========================
-// PROTECTED PROFILE ROUTE
+// PROTECTED ROUTE
 // =========================
 app.get("/api/profile", verifyToken, (req, res) => {
   res.json({
