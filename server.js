@@ -64,7 +64,7 @@ app.get("/", (req, res) => {
 });
 
 // =========================
-// REGISTER ROUTE (REAL DATABASE)
+// REGISTER ROUTE
 // =========================
 app.post("/register", async (req, res) => {
   try {
@@ -107,30 +107,60 @@ app.post("/register", async (req, res) => {
 });
 
 // =========================
-// LOGIN ROUTE (TEMP TEST)
+// REAL LOGIN ROUTE
 // =========================
 app.post("/login", async (req, res) => {
-  const { email, password } = req.body;
+  try {
+    const { email, password } = req.body;
 
-  if (
-    email === "test@guardian.com" &&
-    password === "123456"
-  ) {
-    const token = jwt.sign(
-      { email },
-      "secret_key_guardian",
-      { expiresIn: "7d" }
+    if (!email || !password) {
+      return res.status(400).json({
+        error: "Missing email or password"
+      });
+    }
+
+    const user = await User.findOne({ email });
+
+    if (!user) {
+      return res.status(401).json({
+        error: "User not found"
+      });
+    }
+
+    const isMatch = await bcrypt.compare(
+      password,
+      user.password
     );
 
-    return res.json({
+    if (!isMatch) {
+      return res.status(401).json({
+        error: "Invalid password"
+      });
+    }
+
+    const token = jwt.sign(
+      {
+        userId: user._id,
+        email: user.email
+      },
+      process.env.JWT_SECRET || "guardian_secret",
+      {
+        expiresIn: "7d"
+      }
+    );
+
+    res.json({
       success: true,
+      message: "Login successful",
       token
     });
-  }
 
-  return res.status(401).json({
-    message: "Invalid credentials"
-  });
+  } catch (err) {
+    console.log(err);
+    res.status(500).json({
+      error: "Server error"
+    });
+  }
 });
 
 // =========================
@@ -156,7 +186,7 @@ function verifyToken(req, res, next) {
   try {
     const decoded = jwt.verify(
       token,
-      "secret_key_guardian"
+      process.env.JWT_SECRET || "guardian_secret"
     );
 
     req.user = decoded;
@@ -170,7 +200,7 @@ function verifyToken(req, res, next) {
 }
 
 // =========================
-// PROTECTED ROUTE
+// PROTECTED PROFILE ROUTE
 // =========================
 app.get("/api/profile", verifyToken, (req, res) => {
   res.json({
@@ -202,6 +232,10 @@ app.post("/sos", (req, res) => {
 // =========================
 io.on("connection", (socket) => {
   console.log("Client connected:", socket.id);
+
+  socket.on("disconnect", () => {
+    console.log("Client disconnected:", socket.id);
+  });
 });
 
 // =========================
