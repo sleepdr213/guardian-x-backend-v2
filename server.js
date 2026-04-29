@@ -24,8 +24,12 @@ app.use(express.urlencoded({ extended: true }));
 // MONGODB CONNECTION
 // =========================
 mongoose.connect(process.env.MONGODB_URI)
-  .then(() => console.log("MongoDB connected"))
-  .catch((err) => console.log("MongoDB connection error:", err));
+  .then(() => {
+    console.log("MongoDB connected");
+  })
+  .catch((err) => {
+    console.log("MongoDB connection error:", err);
+  });
 
 // =========================
 // USER MODEL
@@ -34,7 +38,8 @@ const UserSchema = new mongoose.Schema({
   email: {
     type: String,
     required: true,
-    unique: true
+    unique: true,
+    trim: true
   },
   password: {
     type: String,
@@ -93,21 +98,22 @@ app.post("/register", async (req, res) => {
 
     await newUser.save();
 
-    res.json({
+    return res.json({
       success: true,
       message: "User registered successfully"
     });
 
   } catch (err) {
-    console.log(err);
-    res.status(500).json({
+    console.log("Register error:", err);
+
+    return res.status(500).json({
       error: "Server error"
     });
   }
 });
 
 // =========================
-// REAL LOGIN ROUTE
+// LOGIN ROUTE
 // =========================
 app.post("/login", async (req, res) => {
   try {
@@ -149,15 +155,16 @@ app.post("/login", async (req, res) => {
       }
     );
 
-    res.json({
+    return res.json({
       success: true,
       message: "Login successful",
       token
     });
 
   } catch (err) {
-    console.log(err);
-    res.status(500).json({
+    console.log("Login error:", err);
+
+    return res.status(500).json({
       error: "Server error"
     });
   }
@@ -203,28 +210,45 @@ function verifyToken(req, res, next) {
 // PROTECTED PROFILE ROUTE
 // =========================
 app.get("/api/profile", verifyToken, (req, res) => {
-  res.json({
+  return res.json({
     message: "Protected data accessed successfully",
     user: req.user
   });
 });
 
 // =========================
-// SOS ROUTE
+// ADVANCED SOS ROUTE
 // =========================
-app.post("/sos", (req, res) => {
-  const payload = {
-    type: "SOS",
-    timestamp: Date.now()
-  };
+app.post("/sos", async (req, res) => {
+  try {
+    const { email, location, alertType } = req.body;
 
-  console.log("🚨 SOS Triggered", payload);
+    const payload = {
+      type: alertType || "SOS",
+      email: email || "unknown@guardian.com",
+      location: location || "Location not provided",
+      timestamp: new Date().toISOString(),
+      status: "ACTIVE"
+    };
 
-  io.emit("alert", payload);
+    console.log("🚨 Guardian Alert Triggered:", payload);
 
-  res.json({
-    success: true
-  });
+    // Real-time alert broadcast
+    io.emit("guardian_alert", payload);
+
+    return res.json({
+      success: true,
+      message: "SOS alert triggered successfully",
+      alert: payload
+    });
+
+  } catch (err) {
+    console.log("SOS error:", err);
+
+    return res.status(500).json({
+      error: "Failed to trigger SOS alert"
+    });
+  }
 });
 
 // =========================
