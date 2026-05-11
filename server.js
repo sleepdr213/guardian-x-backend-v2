@@ -5,9 +5,18 @@ const bcrypt = require("bcryptjs");
 const mongoose = require("mongoose");
 const http = require("http");
 const { Server } = require("socket.io");
+const twilio = require("twilio");
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+
+// =========================
+// TWILIO SETUP
+// =========================
+const client = twilio(
+  process.env.TWILIO_ACCOUNT_SID,
+  process.env.TWILIO_AUTH_TOKEN
+);
 
 // =========================
 // MIDDLEWARE
@@ -214,6 +223,34 @@ app.get("/api/profile", verifyToken, (req, res) => {
     message: "Protected data accessed successfully",
     user: req.user
   });
+});
+
+// =========================
+// SOS SMS ROUTE
+// =========================
+app.post("/send-sos", async (req, res) => {
+  try {
+    const { to, message } = req.body;
+
+    const sms = await client.messages.create({
+      body: message,
+      from: process.env.TWILIO_PHONE_NUMBER,
+      to: to
+    });
+
+    return res.json({
+      success: true,
+      sid: sms.sid
+    });
+
+  } catch (error) {
+    console.log("Twilio error:", error);
+
+    return res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
 });
 
 // =========================
