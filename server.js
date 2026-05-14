@@ -50,6 +50,7 @@ const UserSchema = new mongoose.Schema({
     unique: true,
     trim: true
   },
+
   password: {
     type: String,
     required: true
@@ -57,6 +58,38 @@ const UserSchema = new mongoose.Schema({
 });
 
 const User = mongoose.model("User", UserSchema);
+
+// =========================
+// EMERGENCY CONTACT MODEL
+// =========================
+const ContactSchema = new mongoose.Schema({
+  userEmail: {
+    type: String,
+    required: true
+  },
+
+  name: {
+    type: String,
+    required: true
+  },
+
+  phone: {
+    type: String,
+    required: true
+  },
+
+  relationship: {
+    type: String,
+    default: "Contact"
+  },
+
+  createdAt: {
+    type: Date,
+    default: Date.now
+  }
+});
+
+const Contact = mongoose.model("Contact", ContactSchema);
 
 // =========================
 // HTTP + SOCKET SETUP
@@ -226,6 +259,71 @@ app.get("/api/profile", verifyToken, (req, res) => {
 });
 
 // =========================
+// ADD EMERGENCY CONTACT
+// =========================
+app.post("/add-contact", async (req, res) => {
+  try {
+    const {
+      userEmail,
+      name,
+      phone,
+      relationship
+    } = req.body;
+
+    if (!userEmail || !name || !phone) {
+      return res.status(400).json({
+        error: "Missing required fields"
+      });
+    }
+
+    const newContact = new Contact({
+      userEmail,
+      name,
+      phone,
+      relationship
+    });
+
+    await newContact.save();
+
+    return res.json({
+      success: true,
+      message: "Emergency contact added",
+      contact: newContact
+    });
+
+  } catch (err) {
+    console.log("Add contact error:", err);
+
+    return res.status(500).json({
+      error: "Failed to add contact"
+    });
+  }
+});
+
+// =========================
+// GET USER CONTACTS
+// =========================
+app.get("/contacts/:email", async (req, res) => {
+  try {
+    const contacts = await Contact.find({
+      userEmail: req.params.email
+    });
+
+    return res.json({
+      success: true,
+      contacts
+    });
+
+  } catch (err) {
+    console.log("Fetch contacts error:", err);
+
+    return res.status(500).json({
+      error: "Failed to fetch contacts"
+    });
+  }
+});
+
+// =========================
 // SOS SMS ROUTE
 // =========================
 app.post("/send-sos", async (req, res) => {
@@ -270,7 +368,6 @@ app.post("/sos", async (req, res) => {
 
     console.log("🚨 Guardian Alert Triggered:", payload);
 
-    // Real-time alert broadcast
     io.emit("guardian_alert", payload);
 
     return res.json({
