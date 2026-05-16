@@ -27,18 +27,25 @@ app.use(cors({
 }));
 
 app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+app.use(express.urlencoded({
+  extended: true
+}));
 
 // =========================
 // MONGODB CONNECTION
 // =========================
-mongoose.connect(process.env.MONGODB_URI)
-  .then(() => {
-    console.log("MongoDB connected");
-  })
-  .catch((err) => {
-    console.log("MongoDB connection error:", err);
-  });
+mongoose.connect(
+  process.env.MONGODB_URI
+)
+.then(() => {
+  console.log("MongoDB connected");
+})
+.catch((err) => {
+  console.log(
+    "MongoDB connection error:",
+    err
+  );
+});
 
 // =========================
 // USER MODEL
@@ -57,7 +64,10 @@ const UserSchema = new mongoose.Schema({
   }
 });
 
-const User = mongoose.model("User", UserSchema);
+const User = mongoose.model(
+  "User",
+  UserSchema
+);
 
 // =========================
 // EMERGENCY CONTACT MODEL
@@ -89,7 +99,45 @@ const ContactSchema = new mongoose.Schema({
   }
 });
 
-const Contact = mongoose.model("Contact", ContactSchema);
+const Contact = mongoose.model(
+  "Contact",
+  ContactSchema
+);
+
+// =========================
+// LIVE LOCATION MODEL
+// =========================
+const LocationSchema = new mongoose.Schema({
+  userEmail: {
+    type: String,
+    required: true
+  },
+
+  latitude: {
+    type: Number,
+    required: true
+  },
+
+  longitude: {
+    type: Number,
+    required: true
+  },
+
+  accuracy: {
+    type: Number,
+    default: 0
+  },
+
+  timestamp: {
+    type: Date,
+    default: Date.now
+  }
+});
+
+const Location = mongoose.model(
+  "Location",
+  LocationSchema
+);
 
 // =========================
 // HTTP + SOCKET SETUP
@@ -107,37 +155,50 @@ const io = new Server(server, {
 // ROOT ROUTE
 // =========================
 app.get("/", (req, res) => {
-  res.send("Guardian X Backend Running");
+  res.send(
+    "Guardian X Backend Running"
+  );
 });
 
 // =========================
 // REGISTER ROUTE
 // =========================
-app.post("/register", async (req, res) => {
+app.post("/register", async (
+  req,
+  res
+) => {
+
   try {
 
-    const { email, password } = req.body;
+    const {
+      email,
+      password
+    } = req.body;
 
     if (!email || !password) {
       return res.status(400).json({
-        error: "Missing email or password"
+        error:
+          "Missing email or password"
       });
     }
 
-    const existingUser = await User.findOne({
-      email
-    });
+    const existingUser =
+      await User.findOne({
+        email
+      });
 
     if (existingUser) {
       return res.status(400).json({
-        error: "User already exists"
+        error:
+          "User already exists"
       });
     }
 
-    const hashedPassword = await bcrypt.hash(
-      password,
-      10
-    );
+    const hashedPassword =
+      await bcrypt.hash(
+        password,
+        10
+      );
 
     const newUser = new User({
       email,
@@ -148,12 +209,16 @@ app.post("/register", async (req, res) => {
 
     return res.json({
       success: true,
-      message: "User registered successfully"
+      message:
+        "User registered successfully"
     });
 
   } catch (err) {
 
-    console.log("Register error:", err);
+    console.log(
+      "Register error:",
+      err
+    );
 
     return res.status(500).json({
       error: "Server error"
@@ -164,14 +229,22 @@ app.post("/register", async (req, res) => {
 // =========================
 // LOGIN ROUTE
 // =========================
-app.post("/login", async (req, res) => {
+app.post("/login", async (
+  req,
+  res
+) => {
+
   try {
 
-    const { email, password } = req.body;
+    const {
+      email,
+      password
+    } = req.body;
 
     if (!email || !password) {
       return res.status(400).json({
-        error: "Missing email or password"
+        error:
+          "Missing email or password"
       });
     }
 
@@ -185,14 +258,16 @@ app.post("/login", async (req, res) => {
       });
     }
 
-    const isMatch = await bcrypt.compare(
-      password,
-      user.password
-    );
+    const isMatch =
+      await bcrypt.compare(
+        password,
+        user.password
+      );
 
     if (!isMatch) {
       return res.status(401).json({
-        error: "Invalid password"
+        error:
+          "Invalid password"
       });
     }
 
@@ -201,7 +276,8 @@ app.post("/login", async (req, res) => {
         userId: user._id,
         email: user.email
       },
-      process.env.JWT_SECRET || "guardian_secret",
+      process.env.JWT_SECRET ||
+      "guardian_secret",
       {
         expiresIn: "7d"
       }
@@ -209,13 +285,17 @@ app.post("/login", async (req, res) => {
 
     return res.json({
       success: true,
-      message: "Login successful",
+      message:
+        "Login successful",
       token
     });
 
   } catch (err) {
 
-    console.log("Login error:", err);
+    console.log(
+      "Login error:",
+      err
+    );
 
     return res.status(500).json({
       error: "Server error"
@@ -226,22 +306,29 @@ app.post("/login", async (req, res) => {
 // =========================
 // JWT VERIFY MIDDLEWARE
 // =========================
-function verifyToken(req, res, next) {
+function verifyToken(
+  req,
+  res,
+  next
+) {
 
   const authHeader =
     req.headers["authorization"];
 
   if (!authHeader) {
     return res.status(401).json({
-      message: "No token provided"
+      message:
+        "No token provided"
     });
   }
 
-  const token = authHeader.split(" ")[1];
+  const token =
+    authHeader.split(" ")[1];
 
   if (!token) {
     return res.status(401).json({
-      message: "Invalid token format"
+      message:
+        "Invalid token format"
     });
   }
 
@@ -260,7 +347,8 @@ function verifyToken(req, res, next) {
   } catch (err) {
 
     return res.status(403).json({
-      message: "Invalid or expired token"
+      message:
+        "Invalid or expired token"
     });
   }
 }
@@ -284,110 +372,260 @@ app.get(
 // =========================
 // ADD EMERGENCY CONTACT
 // =========================
-app.post("/add-contact", async (req, res) => {
-  try {
+app.post(
+  "/add-contact",
+  async (req, res) => {
 
-    const {
-      userEmail,
-      name,
-      phone,
-      relationship
-    } = req.body;
+    try {
 
-    if (!userEmail || !name || !phone) {
-      return res.status(400).json({
-        error: "Missing required fields"
+      const {
+        userEmail,
+        name,
+        phone,
+        relationship
+      } = req.body;
+
+      if (
+        !userEmail ||
+        !name ||
+        !phone
+      ) {
+        return res.status(400).json({
+          error:
+            "Missing required fields"
+        });
+      }
+
+      const newContact =
+        new Contact({
+          userEmail,
+          name,
+          phone,
+          relationship
+        });
+
+      await newContact.save();
+
+      return res.json({
+        success: true,
+        message:
+          "Emergency contact added",
+        contact: newContact
+      });
+
+    } catch (err) {
+
+      console.log(
+        "Add contact error:",
+        err
+      );
+
+      return res.status(500).json({
+        error:
+          "Failed to add contact"
       });
     }
-
-    const newContact = new Contact({
-      userEmail,
-      name,
-      phone,
-      relationship
-    });
-
-    await newContact.save();
-
-    return res.json({
-      success: true,
-      message: "Emergency contact added",
-      contact: newContact
-    });
-
-  } catch (err) {
-
-    console.log("Add contact error:", err);
-
-    return res.status(500).json({
-      error: "Failed to add contact"
-    });
   }
-});
+);
 
 // =========================
 // GET USER CONTACTS
 // =========================
-app.get("/contacts/:email", async (req, res) => {
-  try {
+app.get(
+  "/contacts/:email",
+  async (req, res) => {
 
-    const contacts = await Contact.find({
-      userEmail: req.params.email
-    });
+    try {
 
-    return res.json({
-      success: true,
-      contacts
-    });
+      const contacts =
+        await Contact.find({
+          userEmail:
+            req.params.email
+        });
 
-  } catch (err) {
+      return res.json({
+        success: true,
+        contacts
+      });
 
-    console.log(
-      "Fetch contacts error:",
-      err
-    );
+    } catch (err) {
 
-    return res.status(500).json({
-      error: "Failed to fetch contacts"
-    });
+      console.log(
+        "Fetch contacts error:",
+        err
+      );
+
+      return res.status(500).json({
+        error:
+          "Failed to fetch contacts"
+      });
+    }
   }
-});
+);
+
+// =========================
+// UPDATE LIVE LOCATION
+// =========================
+app.post(
+  "/update-location",
+  async (req, res) => {
+
+    try {
+
+      const {
+        userEmail,
+        latitude,
+        longitude,
+        accuracy
+      } = req.body;
+
+      if (
+        !userEmail ||
+        latitude === undefined ||
+        longitude === undefined
+      ) {
+        return res.status(400).json({
+          error:
+            "Missing required fields"
+        });
+      }
+
+      const newLocation =
+        new Location({
+          userEmail,
+          latitude,
+          longitude,
+          accuracy
+        });
+
+      await newLocation.save();
+
+      // REALTIME LOCATION EVENT
+      io.emit("live_location", {
+        userEmail,
+        latitude,
+        longitude,
+        accuracy,
+        timestamp: new Date()
+      });
+
+      return res.json({
+        success: true,
+        message:
+          "Location updated",
+        location: newLocation
+      });
+
+    } catch (err) {
+
+      console.log(
+        "Location update error:",
+        err
+      );
+
+      return res.status(500).json({
+        error:
+          "Failed to update location"
+      });
+    }
+  }
+);
+
+// =========================
+// GET LAST LOCATION
+// =========================
+app.get(
+  "/last-location/:email",
+  async (req, res) => {
+
+    try {
+
+      const location =
+        await Location.findOne({
+          userEmail:
+            req.params.email
+        }).sort({
+          timestamp: -1
+        });
+
+      if (!location) {
+        return res.status(404).json({
+          error:
+            "No location found"
+        });
+      }
+
+      return res.json({
+        success: true,
+        location
+      });
+
+    } catch (err) {
+
+      console.log(
+        "Fetch location error:",
+        err
+      );
+
+      return res.status(500).json({
+        error:
+          "Failed to fetch location"
+      });
+    }
+  }
+);
 
 // =========================
 // SOS SMS ROUTE
 // =========================
-app.post("/send-sos", async (req, res) => {
-  try {
+app.post(
+  "/send-sos",
+  async (req, res) => {
 
-    const { to, message } = req.body;
+    try {
 
-    const sms = await client.messages.create({
-      body: message,
-      from:
-        process.env.TWILIO_PHONE_NUMBER,
-      to: to
-    });
+      const {
+        to,
+        message
+      } = req.body;
 
-    return res.json({
-      success: true,
-      sid: sms.sid
-    });
+      const sms =
+        await client.messages.create({
+          body: message,
+          from:
+            process.env
+              .TWILIO_PHONE_NUMBER,
+          to: to
+        });
 
-  } catch (error) {
+      return res.json({
+        success: true,
+        sid: sms.sid
+      });
 
-    console.log("Twilio error:", error);
+    } catch (error) {
 
-    return res.status(500).json({
-      success: false,
-      error: error.message
-    });
+      console.log(
+        "Twilio error:",
+        error
+      );
+
+      return res.status(500).json({
+        success: false,
+        error: error.message
+      });
+    }
   }
-});
+);
 
 // =========================
 // ADVANCED SOS ROUTE
 // =========================
-app.post("/sos", async (req, res) => {
+app.post("/sos", async (
+  req,
+  res
+) => {
+
   try {
 
     const {
@@ -397,12 +635,20 @@ app.post("/sos", async (req, res) => {
     } = req.body;
 
     const payload = {
-      type: alertType || "SOS",
+      type:
+        alertType || "SOS",
+
       email:
-        email || "unknown@guardian.com",
+        email ||
+        "unknown@guardian.com",
+
       location:
-        location || "Location not provided",
-      timestamp: new Date().toISOString(),
+        location ||
+        "Location not provided",
+
+      timestamp:
+        new Date().toISOString(),
+
       status: "ACTIVE"
     };
 
@@ -411,16 +657,13 @@ app.post("/sos", async (req, res) => {
       payload
     );
 
-    // =========================
-    // FIND USER CONTACTS
-    // =========================
-    const contacts = await Contact.find({
-      userEmail: email
-    });
+    // FIND CONTACTS
+    const contacts =
+      await Contact.find({
+        userEmail: email
+      });
 
-    // =========================
     // SEND SMS ALERTS
-    // =========================
     for (const contact of contacts) {
 
       const message =
@@ -439,7 +682,8 @@ ${payload.timestamp}`;
         await client.messages.create({
           body: message,
           from:
-            process.env.TWILIO_PHONE_NUMBER,
+            process.env
+              .TWILIO_PHONE_NUMBER,
           to: contact.phone
         });
 
@@ -456,9 +700,7 @@ ${payload.timestamp}`;
       }
     }
 
-    // =========================
-    // REALTIME SOCKET ALERT
-    // =========================
+    // REALTIME ALERT
     io.emit(
       "guardian_alert",
       payload
@@ -466,17 +708,23 @@ ${payload.timestamp}`;
 
     return res.json({
       success: true,
-      message: "SOS broadcast sent",
-      contactsAlerted: contacts.length,
+      message:
+        "SOS broadcast sent",
+      contactsAlerted:
+        contacts.length,
       alert: payload
     });
 
   } catch (err) {
 
-    console.log("SOS error:", err);
+    console.log(
+      "SOS error:",
+      err
+    );
 
     return res.status(500).json({
-      error: "Failed to trigger SOS alert"
+      error:
+        "Failed to trigger SOS alert"
     });
   }
 });
@@ -484,21 +732,27 @@ ${payload.timestamp}`;
 // =========================
 // SOCKET CONNECTION
 // =========================
-io.on("connection", (socket) => {
-
-  console.log(
-    "Client connected:",
-    socket.id
-  );
-
-  socket.on("disconnect", () => {
+io.on(
+  "connection",
+  (socket) => {
 
     console.log(
-      "Client disconnected:",
+      "Client connected:",
       socket.id
     );
-  });
-});
+
+    socket.on(
+      "disconnect",
+      () => {
+
+        console.log(
+          "Client disconnected:",
+          socket.id
+        );
+      }
+    );
+  }
+);
 
 // =========================
 // START SERVER
