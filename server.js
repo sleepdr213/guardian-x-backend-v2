@@ -10,47 +10,46 @@ const twilio = require("twilio");
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// =========================
+// =====================================
 // TWILIO SETUP
-// =========================
+// =====================================
 const client = twilio(
   process.env.TWILIO_ACCOUNT_SID,
   process.env.TWILIO_AUTH_TOKEN
 );
 
-// =========================
+// =====================================
 // MIDDLEWARE
-// =========================
+// =====================================
 app.use(cors({
   origin: "*",
   methods: ["GET", "POST", "PUT", "DELETE"]
 }));
 
 app.use(express.json());
+
 app.use(express.urlencoded({
   extended: true
 }));
 
-// =========================
+// =====================================
 // MONGODB CONNECTION
-// =========================
-mongoose.connect(
-  process.env.MONGODB_URI
-)
+// =====================================
+mongoose.connect(process.env.MONGODB_URI)
+
 .then(() => {
-  console.log("MongoDB connected");
+  console.log("✅ MongoDB connected");
 })
+
 .catch((err) => {
-  console.log(
-    "MongoDB connection error:",
-    err
-  );
+  console.log("❌ MongoDB connection error:", err);
 });
 
-// =========================
+// =====================================
 // USER MODEL
-// =========================
+// =====================================
 const UserSchema = new mongoose.Schema({
+
   email: {
     type: String,
     required: true,
@@ -62,6 +61,7 @@ const UserSchema = new mongoose.Schema({
     type: String,
     required: true
   }
+
 });
 
 const User = mongoose.model(
@@ -69,10 +69,11 @@ const User = mongoose.model(
   UserSchema
 );
 
-// =========================
+// =====================================
 // EMERGENCY CONTACT MODEL
-// =========================
+// =====================================
 const ContactSchema = new mongoose.Schema({
+
   userEmail: {
     type: String,
     required: true
@@ -97,6 +98,7 @@ const ContactSchema = new mongoose.Schema({
     type: Date,
     default: Date.now
   }
+
 });
 
 const Contact = mongoose.model(
@@ -104,10 +106,11 @@ const Contact = mongoose.model(
   ContactSchema
 );
 
-// =========================
+// =====================================
 // LIVE LOCATION MODEL
-// =========================
+// =====================================
 const LocationSchema = new mongoose.Schema({
+
   userEmail: {
     type: String,
     required: true
@@ -132,6 +135,7 @@ const LocationSchema = new mongoose.Schema({
     type: Date,
     default: Date.now
   }
+
 });
 
 const Location = mongoose.model(
@@ -139,34 +143,33 @@ const Location = mongoose.model(
   LocationSchema
 );
 
-// =========================
-// HTTP + SOCKET SETUP
-// =========================
+// =====================================
+// HTTP SERVER + SOCKET.IO
+// =====================================
 const server = http.createServer(app);
 
 const io = new Server(server, {
+
   cors: {
     origin: "*",
     methods: ["GET", "POST"]
   }
+
 });
 
-// =========================
+// =====================================
 // ROOT ROUTE
-// =========================
+// =====================================
 app.get("/", (req, res) => {
-  res.send(
-    "Guardian X Backend Running"
-  );
+
+  res.send("🚀 Guardian X Backend Running");
+
 });
 
-// =========================
+// =====================================
 // REGISTER ROUTE
-// =========================
-app.post("/register", async (
-  req,
-  res
-) => {
+// =====================================
+app.post("/register", async (req, res) => {
 
   try {
 
@@ -176,63 +179,62 @@ app.post("/register", async (
     } = req.body;
 
     if (!email || !password) {
+
       return res.status(400).json({
-        error:
-          "Missing email or password"
+        error: "Missing email or password"
       });
+
     }
 
-    const existingUser =
-      await User.findOne({
-        email
-      });
+    const existingUser = await User.findOne({
+      email
+    });
 
     if (existingUser) {
+
       return res.status(400).json({
-        error:
-          "User already exists"
+        error: "User already exists"
       });
+
     }
 
-    const hashedPassword =
-      await bcrypt.hash(
-        password,
-        10
-      );
+    const hashedPassword = await bcrypt.hash(
+      password,
+      10
+    );
 
     const newUser = new User({
+
       email,
       password: hashedPassword
+
     });
 
     await newUser.save();
 
     return res.json({
+
       success: true,
-      message:
-        "User registered successfully"
+      message: "User registered successfully"
+
     });
 
   } catch (err) {
 
-    console.log(
-      "Register error:",
-      err
-    );
+    console.log("Register error:", err);
 
     return res.status(500).json({
       error: "Server error"
     });
+
   }
+
 });
 
-// =========================
+// =====================================
 // LOGIN ROUTE
-// =========================
-app.post("/login", async (
-  req,
-  res
-) => {
+// =====================================
+app.post("/login", async (req, res) => {
 
   try {
 
@@ -242,10 +244,11 @@ app.post("/login", async (
     } = req.body;
 
     if (!email || !password) {
+
       return res.status(400).json({
-        error:
-          "Missing email or password"
+        error: "Missing email or password"
       });
+
     }
 
     const user = await User.findOne({
@@ -253,91 +256,94 @@ app.post("/login", async (
     });
 
     if (!user) {
+
       return res.status(401).json({
         error: "User not found"
       });
+
     }
 
-    const isMatch =
-      await bcrypt.compare(
-        password,
-        user.password
-      );
+    const isMatch = await bcrypt.compare(
+      password,
+      user.password
+    );
 
     if (!isMatch) {
+
       return res.status(401).json({
-        error:
-          "Invalid password"
+        error: "Invalid password"
       });
+
     }
 
     const token = jwt.sign(
+
       {
         userId: user._id,
         email: user.email
       },
-      process.env.JWT_SECRET ||
-      "guardian_secret",
+
+      process.env.JWT_SECRET || "guardian_secret",
+
       {
         expiresIn: "7d"
       }
+
     );
 
     return res.json({
+
       success: true,
-      message:
-        "Login successful",
+      message: "Login successful",
       token
+
     });
 
   } catch (err) {
 
-    console.log(
-      "Login error:",
-      err
-    );
+    console.log("Login error:", err);
 
     return res.status(500).json({
       error: "Server error"
     });
+
   }
+
 });
 
-// =========================
+// =====================================
 // JWT VERIFY MIDDLEWARE
-// =========================
-function verifyToken(
-  req,
-  res,
-  next
-) {
+// =====================================
+function verifyToken(req, res, next) {
 
   const authHeader =
     req.headers["authorization"];
 
   if (!authHeader) {
+
     return res.status(401).json({
-      message:
-        "No token provided"
+      message: "No token provided"
     });
+
   }
 
-  const token =
-    authHeader.split(" ")[1];
+  const token = authHeader.split(" ")[1];
 
   if (!token) {
+
     return res.status(401).json({
-      message:
-        "Invalid token format"
+      message: "Invalid token format"
     });
+
   }
 
   try {
 
     const decoded = jwt.verify(
+
       token,
-      process.env.JWT_SECRET ||
-      "guardian_secret"
+      process.env.JWT_SECRET || "guardian_secret"
+
     );
 
     req.user = decoded;
@@ -347,284 +353,277 @@ function verifyToken(
   } catch (err) {
 
     return res.status(403).json({
-      message:
-        "Invalid or expired token"
+      message: "Invalid or expired token"
     });
+
   }
+
 }
 
-// =========================
-// PROTECTED PROFILE ROUTE
-// =========================
+// =====================================
+// PROFILE ROUTE
+// =====================================
 app.get(
   "/api/profile",
   verifyToken,
   (req, res) => {
 
     return res.json({
-      message:
-        "Protected data accessed successfully",
+
+      success: true,
       user: req.user
+
     });
+
   }
 );
 
-// =========================
-// ADD EMERGENCY CONTACT
-// =========================
-app.post(
-  "/add-contact",
-  async (req, res) => {
+// =====================================
+// ADD CONTACT
+// =====================================
+app.post("/add-contact", async (req, res) => {
 
-    try {
+  try {
 
-      const {
-        userEmail,
-        name,
-        phone,
-        relationship
-      } = req.body;
+    const {
+      userEmail,
+      name,
+      phone,
+      relationship
+    } = req.body;
 
-      if (
-        !userEmail ||
-        !name ||
-        !phone
-      ) {
-        return res.status(400).json({
-          error:
-            "Missing required fields"
-        });
-      }
+    if (
+      !userEmail ||
+      !name ||
+      !phone
+    ) {
 
-      const newContact =
-        new Contact({
-          userEmail,
-          name,
-          phone,
-          relationship
-        });
-
-      await newContact.save();
-
-      return res.json({
-        success: true,
-        message:
-          "Emergency contact added",
-        contact: newContact
+      return res.status(400).json({
+        error: "Missing required fields"
       });
 
-    } catch (err) {
-
-      console.log(
-        "Add contact error:",
-        err
-      );
-
-      return res.status(500).json({
-        error:
-          "Failed to add contact"
-      });
     }
+
+    const newContact = new Contact({
+
+      userEmail,
+      name,
+      phone,
+      relationship
+
+    });
+
+    await newContact.save();
+
+    return res.json({
+
+      success: true,
+      message: "Emergency contact added",
+      contact: newContact
+
+    });
+
+  } catch (err) {
+
+    console.log("Add contact error:", err);
+
+    return res.status(500).json({
+      error: "Failed to add contact"
+    });
+
   }
-);
 
-// =========================
-// GET USER CONTACTS
-// =========================
-app.get(
-  "/contacts/:email",
-  async (req, res) => {
+});
 
-    try {
+// =====================================
+// GET CONTACTS
+// =====================================
+app.get("/contacts/:email", async (req, res) => {
 
-      const contacts =
-        await Contact.find({
-          userEmail:
-            req.params.email
-        });
+  try {
 
-      return res.json({
-        success: true,
-        contacts
-      });
+    const contacts = await Contact.find({
 
-    } catch (err) {
+      userEmail: req.params.email
 
-      console.log(
-        "Fetch contacts error:",
-        err
-      );
+    });
 
-      return res.status(500).json({
-        error:
-          "Failed to fetch contacts"
-      });
-    }
+    return res.json({
+
+      success: true,
+      contacts
+
+    });
+
+  } catch (err) {
+
+    console.log("Fetch contacts error:", err);
+
+    return res.status(500).json({
+      error: "Failed to fetch contacts"
+    });
+
   }
-);
 
-// =========================
+});
+
+// =====================================
 // UPDATE LIVE LOCATION
-// =========================
-app.post(
-  "/update-location",
-  async (req, res) => {
+// =====================================
+app.post("/update-location", async (req, res) => {
 
-    try {
+  try {
 
-      const {
-        userEmail,
-        latitude,
-        longitude,
-        accuracy
-      } = req.body;
+    const {
+      userEmail,
+      latitude,
+      longitude,
+      accuracy
+    } = req.body;
 
-      if (
-        !userEmail ||
-        latitude === undefined ||
-        longitude === undefined
-      ) {
-        return res.status(400).json({
-          error:
-            "Missing required fields"
-        });
-      }
+    if (
+      !userEmail ||
+      latitude === undefined ||
+      longitude === undefined
+    ) {
 
-      const newLocation =
-        new Location({
-          userEmail,
-          latitude,
-          longitude,
-          accuracy
-        });
-
-      await newLocation.save();
-
-      // REALTIME LOCATION EVENT
-      io.emit("live_location", {
-        userEmail,
-        latitude,
-        longitude,
-        accuracy,
-        timestamp: new Date()
+      return res.status(400).json({
+        error: "Missing required fields"
       });
 
-      return res.json({
-        success: true,
-        message:
-          "Location updated",
-        location: newLocation
-      });
-
-    } catch (err) {
-
-      console.log(
-        "Location update error:",
-        err
-      );
-
-      return res.status(500).json({
-        error:
-          "Failed to update location"
-      });
     }
-  }
-);
 
-// =========================
+    const newLocation = new Location({
+
+      userEmail,
+      latitude,
+      longitude,
+      accuracy
+
+    });
+
+    await newLocation.save();
+
+    io.emit("live_location", {
+
+      userEmail,
+      latitude,
+      longitude,
+      accuracy,
+      timestamp: new Date()
+
+    });
+
+    return res.json({
+
+      success: true,
+      message: "Location updated",
+      location: newLocation
+
+    });
+
+  } catch (err) {
+
+    console.log("Location update error:", err);
+
+    return res.status(500).json({
+      error: "Failed to update location"
+    });
+
+  }
+
+});
+
+// =====================================
 // GET LAST LOCATION
-// =========================
-app.get(
-  "/last-location/:email",
-  async (req, res) => {
+// =====================================
+app.get("/last-location/:email", async (req, res) => {
 
-    try {
+  try {
 
-      const location =
-        await Location.findOne({
-          userEmail:
-            req.params.email
-        }).sort({
-          timestamp: -1
-        });
+    const location = await Location.findOne({
 
-      if (!location) {
-        return res.status(404).json({
-          error:
-            "No location found"
-        });
-      }
+      userEmail: req.params.email
 
-      return res.json({
-        success: true,
-        location
+    }).sort({
+
+      timestamp: -1
+
+    });
+
+    if (!location) {
+
+      return res.status(404).json({
+        error: "No location found"
       });
 
-    } catch (err) {
-
-      console.log(
-        "Fetch location error:",
-        err
-      );
-
-      return res.status(500).json({
-        error:
-          "Failed to fetch location"
-      });
     }
+
+    return res.json({
+
+      success: true,
+      location
+
+    });
+
+  } catch (err) {
+
+    console.log("Fetch location error:", err);
+
+    return res.status(500).json({
+      error: "Failed to fetch location"
+    });
+
   }
-);
 
-// =========================
-// SOS SMS ROUTE
-// =========================
-app.post(
-  "/send-sos",
-  async (req, res) => {
+});
 
-    try {
+// =====================================
+// SEND SINGLE SOS SMS
+// =====================================
+app.post("/send-sos", async (req, res) => {
 
-      const {
-        to,
-        message
-      } = req.body;
+  try {
 
-      const sms =
-        await client.messages.create({
-          body: message,
-          from:
-            process.env
-              .TWILIO_PHONE_NUMBER,
-          to: to
-        });
+    const {
+      to,
+      message
+    } = req.body;
 
-      return res.json({
-        success: true,
-        sid: sms.sid
-      });
+    const sms = await client.messages.create({
 
-    } catch (error) {
+      body: message,
+      from: process.env.TWILIO_PHONE_NUMBER,
+      to: to
 
-      console.log(
-        "Twilio error:",
-        error
-      );
+    });
 
-      return res.status(500).json({
-        success: false,
-        error: error.message
-      });
-    }
+    return res.json({
+
+      success: true,
+      sid: sms.sid
+
+    });
+
+  } catch (error) {
+
+    console.log("Twilio error:", error);
+
+    return res.status(500).json({
+
+      success: false,
+      error: error.message
+
+    });
+
   }
-);
 
-// =========================
-// ADVANCED SOS ROUTE
-// =========================
-app.post("/sos", async (
-  req,
-  res
-) => {
+});
+
+// =====================================
+// FULL SOS BROADCAST SYSTEM
+// =====================================
+app.post("/sos", async (req, res) => {
 
   try {
 
@@ -635,21 +634,20 @@ app.post("/sos", async (
     } = req.body;
 
     const payload = {
-      type:
-        alertType || "SOS",
+
+      type: alertType || "SOS",
 
       email:
-        email ||
-        "unknown@guardian.com",
+        email || "unknown@guardian.com",
 
       location:
-        location ||
-        "Location not provided",
+        location || "Location not provided",
 
       timestamp:
         new Date().toISOString(),
 
       status: "ACTIVE"
+
     };
 
     console.log(
@@ -658,12 +656,13 @@ app.post("/sos", async (
     );
 
     // FIND CONTACTS
-    const contacts =
-      await Contact.find({
-        userEmail: email
-      });
+    const contacts = await Contact.find({
 
-    // SEND SMS ALERTS
+      userEmail: email
+
+    });
+
+    // SEND ALERTS
     for (const contact of contacts) {
 
       const message =
@@ -671,95 +670,93 @@ app.post("/sos", async (
 
 ${email} triggered an emergency alert.
 
-Location:
+📍 Location:
 ${location}
 
-Time:
+⏰ Time:
 ${payload.timestamp}`;
 
       try {
 
         await client.messages.create({
+
           body: message,
           from:
-            process.env
-              .TWILIO_PHONE_NUMBER,
+            process.env.TWILIO_PHONE_NUMBER,
           to: contact.phone
+
         });
 
         console.log(
-          `SMS sent to ${contact.phone}`
+          `✅ SMS sent to ${contact.phone}`
         );
 
       } catch (smsError) {
 
         console.log(
-          `Failed SMS to ${contact.phone}:`,
+          `❌ Failed SMS to ${contact.phone}:`,
           smsError.message
         );
+
       }
+
     }
 
-    // REALTIME ALERT
+    // REALTIME ALERT EVENT
     io.emit(
       "guardian_alert",
       payload
     );
 
     return res.json({
+
       success: true,
-      message:
-        "SOS broadcast sent",
-      contactsAlerted:
-        contacts.length,
+      message: "SOS broadcast sent",
+      contactsAlerted: contacts.length,
       alert: payload
+
     });
 
   } catch (err) {
 
-    console.log(
-      "SOS error:",
-      err
-    );
+    console.log("SOS error:", err);
 
     return res.status(500).json({
-      error:
-        "Failed to trigger SOS alert"
+      error: "Failed to trigger SOS alert"
     });
+
   }
+
 });
 
-// =========================
+// =====================================
 // SOCKET CONNECTION
-// =========================
-io.on(
-  "connection",
-  (socket) => {
+// =====================================
+io.on("connection", (socket) => {
+
+  console.log(
+    "🔌 Client connected:",
+    socket.id
+  );
+
+  socket.on("disconnect", () => {
 
     console.log(
-      "Client connected:",
+      "❌ Client disconnected:",
       socket.id
     );
 
-    socket.on(
-      "disconnect",
-      () => {
+  });
 
-        console.log(
-          "Client disconnected:",
-          socket.id
-        );
-      }
-    );
-  }
-);
+});
 
-// =========================
+// =====================================
 // START SERVER
-// =========================
+// =====================================
 server.listen(PORT, () => {
 
   console.log(
-    `Guardian backend running on port ${PORT}`
+    `🚀 Guardian backend running on port ${PORT}`
   );
+
 });
