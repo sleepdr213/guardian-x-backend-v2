@@ -115,6 +115,7 @@ app.get("/", (req, res) => {
 // =========================
 app.post("/register", async (req, res) => {
   try {
+
     const { email, password } = req.body;
 
     if (!email || !password) {
@@ -123,7 +124,9 @@ app.post("/register", async (req, res) => {
       });
     }
 
-    const existingUser = await User.findOne({ email });
+    const existingUser = await User.findOne({
+      email
+    });
 
     if (existingUser) {
       return res.status(400).json({
@@ -131,7 +134,10 @@ app.post("/register", async (req, res) => {
       });
     }
 
-    const hashedPassword = await bcrypt.hash(password, 10);
+    const hashedPassword = await bcrypt.hash(
+      password,
+      10
+    );
 
     const newUser = new User({
       email,
@@ -146,6 +152,7 @@ app.post("/register", async (req, res) => {
     });
 
   } catch (err) {
+
     console.log("Register error:", err);
 
     return res.status(500).json({
@@ -159,6 +166,7 @@ app.post("/register", async (req, res) => {
 // =========================
 app.post("/login", async (req, res) => {
   try {
+
     const { email, password } = req.body;
 
     if (!email || !password) {
@@ -167,7 +175,9 @@ app.post("/login", async (req, res) => {
       });
     }
 
-    const user = await User.findOne({ email });
+    const user = await User.findOne({
+      email
+    });
 
     if (!user) {
       return res.status(401).json({
@@ -204,6 +214,7 @@ app.post("/login", async (req, res) => {
     });
 
   } catch (err) {
+
     console.log("Login error:", err);
 
     return res.status(500).json({
@@ -216,7 +227,9 @@ app.post("/login", async (req, res) => {
 // JWT VERIFY MIDDLEWARE
 // =========================
 function verifyToken(req, res, next) {
-  const authHeader = req.headers["authorization"];
+
+  const authHeader =
+    req.headers["authorization"];
 
   if (!authHeader) {
     return res.status(401).json({
@@ -233,15 +246,19 @@ function verifyToken(req, res, next) {
   }
 
   try {
+
     const decoded = jwt.verify(
       token,
-      process.env.JWT_SECRET || "guardian_secret"
+      process.env.JWT_SECRET ||
+      "guardian_secret"
     );
 
     req.user = decoded;
+
     next();
 
   } catch (err) {
+
     return res.status(403).json({
       message: "Invalid or expired token"
     });
@@ -251,18 +268,25 @@ function verifyToken(req, res, next) {
 // =========================
 // PROTECTED PROFILE ROUTE
 // =========================
-app.get("/api/profile", verifyToken, (req, res) => {
-  return res.json({
-    message: "Protected data accessed successfully",
-    user: req.user
-  });
-});
+app.get(
+  "/api/profile",
+  verifyToken,
+  (req, res) => {
+
+    return res.json({
+      message:
+        "Protected data accessed successfully",
+      user: req.user
+    });
+  }
+);
 
 // =========================
 // ADD EMERGENCY CONTACT
 // =========================
 app.post("/add-contact", async (req, res) => {
   try {
+
     const {
       userEmail,
       name,
@@ -292,6 +316,7 @@ app.post("/add-contact", async (req, res) => {
     });
 
   } catch (err) {
+
     console.log("Add contact error:", err);
 
     return res.status(500).json({
@@ -305,6 +330,7 @@ app.post("/add-contact", async (req, res) => {
 // =========================
 app.get("/contacts/:email", async (req, res) => {
   try {
+
     const contacts = await Contact.find({
       userEmail: req.params.email
     });
@@ -315,7 +341,11 @@ app.get("/contacts/:email", async (req, res) => {
     });
 
   } catch (err) {
-    console.log("Fetch contacts error:", err);
+
+    console.log(
+      "Fetch contacts error:",
+      err
+    );
 
     return res.status(500).json({
       error: "Failed to fetch contacts"
@@ -328,11 +358,13 @@ app.get("/contacts/:email", async (req, res) => {
 // =========================
 app.post("/send-sos", async (req, res) => {
   try {
+
     const { to, message } = req.body;
 
     const sms = await client.messages.create({
       body: message,
-      from: process.env.TWILIO_PHONE_NUMBER,
+      from:
+        process.env.TWILIO_PHONE_NUMBER,
       to: to
     });
 
@@ -342,6 +374,7 @@ app.post("/send-sos", async (req, res) => {
     });
 
   } catch (error) {
+
     console.log("Twilio error:", error);
 
     return res.status(500).json({
@@ -356,27 +389,90 @@ app.post("/send-sos", async (req, res) => {
 // =========================
 app.post("/sos", async (req, res) => {
   try {
-    const { email, location, alertType } = req.body;
+
+    const {
+      email,
+      location,
+      alertType
+    } = req.body;
 
     const payload = {
       type: alertType || "SOS",
-      email: email || "unknown@guardian.com",
-      location: location || "Location not provided",
+      email:
+        email || "unknown@guardian.com",
+      location:
+        location || "Location not provided",
       timestamp: new Date().toISOString(),
       status: "ACTIVE"
     };
 
-    console.log("🚨 Guardian Alert Triggered:", payload);
+    console.log(
+      "🚨 Guardian Alert Triggered:",
+      payload
+    );
 
-    io.emit("guardian_alert", payload);
+    // =========================
+    // FIND USER CONTACTS
+    // =========================
+    const contacts = await Contact.find({
+      userEmail: email
+    });
+
+    // =========================
+    // SEND SMS ALERTS
+    // =========================
+    for (const contact of contacts) {
+
+      const message =
+`🚨 GUARDIAN X SOS ALERT
+
+${email} triggered an emergency alert.
+
+Location:
+${location}
+
+Time:
+${payload.timestamp}`;
+
+      try {
+
+        await client.messages.create({
+          body: message,
+          from:
+            process.env.TWILIO_PHONE_NUMBER,
+          to: contact.phone
+        });
+
+        console.log(
+          `SMS sent to ${contact.phone}`
+        );
+
+      } catch (smsError) {
+
+        console.log(
+          `Failed SMS to ${contact.phone}:`,
+          smsError.message
+        );
+      }
+    }
+
+    // =========================
+    // REALTIME SOCKET ALERT
+    // =========================
+    io.emit(
+      "guardian_alert",
+      payload
+    );
 
     return res.json({
       success: true,
-      message: "SOS alert triggered successfully",
+      message: "SOS broadcast sent",
+      contactsAlerted: contacts.length,
       alert: payload
     });
 
   } catch (err) {
+
     console.log("SOS error:", err);
 
     return res.status(500).json({
@@ -389,10 +485,18 @@ app.post("/sos", async (req, res) => {
 // SOCKET CONNECTION
 // =========================
 io.on("connection", (socket) => {
-  console.log("Client connected:", socket.id);
+
+  console.log(
+    "Client connected:",
+    socket.id
+  );
 
   socket.on("disconnect", () => {
-    console.log("Client disconnected:", socket.id);
+
+    console.log(
+      "Client disconnected:",
+      socket.id
+    );
   });
 });
 
@@ -400,5 +504,8 @@ io.on("connection", (socket) => {
 // START SERVER
 // =========================
 server.listen(PORT, () => {
-  console.log(`Guardian backend running on port ${PORT}`);
+
+  console.log(
+    `Guardian backend running on port ${PORT}`
+  );
 });
