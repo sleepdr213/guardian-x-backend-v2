@@ -192,6 +192,48 @@ const Incident = mongoose.model(
 );
 
 // =====================================
+// EVIDENCE MODEL
+// =====================================
+const EvidenceSchema = new mongoose.Schema({
+
+  incidentId: {
+    type: String,
+    required: true
+  },
+
+  userEmail: {
+    type: String,
+    required: true
+  },
+
+  type: {
+    type: String,
+    default: "PHOTO"
+  },
+
+  fileUrl: {
+    type: String,
+    required: true
+  },
+
+  description: {
+    type: String,
+    default: ""
+  },
+
+  timestamp: {
+    type: Date,
+    default: Date.now
+  }
+
+});
+
+const Evidence = mongoose.model(
+  "Evidence",
+  EvidenceSchema
+);
+
+// =====================================
 // HTTP SERVER + SOCKET.IO
 // =====================================
 const server = http.createServer(app);
@@ -724,6 +766,107 @@ app.get("/incidents", async (req, res) => {
 });
 
 // =====================================
+// UPLOAD EVIDENCE
+// =====================================
+app.post("/upload-evidence", async (req, res) => {
+
+  try {
+
+    const {
+      incidentId,
+      userEmail,
+      type,
+      fileUrl,
+      description
+    } = req.body;
+
+    const evidence = new Evidence({
+
+      incidentId,
+      userEmail,
+
+      type:
+        type || "PHOTO",
+
+      fileUrl,
+
+      description:
+        description || ""
+
+    });
+
+    await evidence.save();
+
+    io.emit(
+      "new_evidence",
+      evidence
+    );
+
+    return res.json({
+
+      success: true,
+      message: "Evidence uploaded",
+      evidence
+
+    });
+
+  } catch (err) {
+
+    console.log(
+      "Evidence upload error:",
+      err
+    );
+
+    return res.status(500).json({
+      error: "Failed to upload evidence"
+    });
+
+  }
+
+});
+
+// =====================================
+// GET INCIDENT EVIDENCE
+// =====================================
+app.get("/evidence/:incidentId", async (req, res) => {
+
+  try {
+
+    const evidence =
+      await Evidence.find({
+
+        incidentId:
+          req.params.incidentId
+
+      }).sort({
+
+        timestamp: -1
+
+      });
+
+    return res.json({
+
+      success: true,
+      evidence
+
+    });
+
+  } catch (err) {
+
+    console.log(
+      "Fetch evidence error:",
+      err
+    );
+
+    return res.status(500).json({
+      error: "Failed to fetch evidence"
+    });
+
+  }
+
+});
+
+// =====================================
 // SEND SINGLE SOS SMS
 // =====================================
 app.post("/send-sos", async (req, res) => {
@@ -850,10 +993,6 @@ ${payload.timestamp}`;
           to: contact.phone
 
         });
-
-        console.log(
-          `✅ SMS sent to ${contact.phone}`
-        );
 
       } catch (smsError) {
 
