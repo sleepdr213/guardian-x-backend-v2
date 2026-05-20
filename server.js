@@ -257,6 +257,18 @@ app.get("/", (req, res) => {
 });
 
 // =====================================
+// HEALTH CHECK ROUTE
+// =====================================
+app.get("/health", (req, res) => {
+
+  return res.json({
+    success: true,
+    message: "Guardian X API Healthy"
+  });
+
+});
+
+// =====================================
 // REGISTER ROUTE
 // =====================================
 app.post("/register", async (req, res) => {
@@ -780,6 +792,18 @@ app.post("/upload-evidence", async (req, res) => {
       description
     } = req.body;
 
+    if (
+      !incidentId ||
+      !userEmail ||
+      !fileUrl
+    ) {
+
+      return res.status(400).json({
+        error: "Missing required fields"
+      });
+
+    }
+
     const evidence = new Evidence({
 
       incidentId,
@@ -993,6 +1017,10 @@ ${payload.timestamp}`;
           to: contact.phone
 
         });
+
+        console.log(
+          `✅ SMS sent to ${contact.phone}`
+        );
 
       } catch (smsError) {
 
