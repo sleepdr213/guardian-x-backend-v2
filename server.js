@@ -144,6 +144,54 @@ const Location = mongoose.model(
 );
 
 // =====================================
+// INCIDENT MODEL
+// =====================================
+const IncidentSchema = new mongoose.Schema({
+
+  incidentId: {
+    type: String,
+    required: true,
+    unique: true
+  },
+
+  userEmail: {
+    type: String,
+    required: true
+  },
+
+  type: {
+    type: String,
+    default: "SOS"
+  },
+
+  severity: {
+    type: String,
+    default: "HIGH"
+  },
+
+  location: {
+    type: String,
+    default: "Unknown"
+  },
+
+  status: {
+    type: String,
+    default: "ACTIVE"
+  },
+
+  createdAt: {
+    type: Date,
+    default: Date.now
+  }
+
+});
+
+const Incident = mongoose.model(
+  "Incident",
+  IncidentSchema
+);
+
+// =====================================
 // HTTP SERVER + SOCKET.IO
 // =====================================
 const server = http.createServer(app);
@@ -579,6 +627,103 @@ app.get("/last-location/:email", async (req, res) => {
 });
 
 // =====================================
+// CREATE INCIDENT
+// =====================================
+app.post("/create-incident", async (req, res) => {
+
+  try {
+
+    const {
+      userEmail,
+      type,
+      severity,
+      location
+    } = req.body;
+
+    const incident = new Incident({
+
+      incidentId:
+        "GX-" + Date.now(),
+
+      userEmail,
+
+      type:
+        type || "SOS",
+
+      severity:
+        severity || "HIGH",
+
+      location:
+        location || "Unknown"
+
+    });
+
+    await incident.save();
+
+    io.emit(
+      "new_incident",
+      incident
+    );
+
+    return res.json({
+
+      success: true,
+      message: "Incident created",
+      incident
+
+    });
+
+  } catch (err) {
+
+    console.log(
+      "Create incident error:",
+      err
+    );
+
+    return res.status(500).json({
+      error: "Failed to create incident"
+    });
+
+  }
+
+});
+
+// =====================================
+// GET ALL INCIDENTS
+// =====================================
+app.get("/incidents", async (req, res) => {
+
+  try {
+
+    const incidents =
+      await Incident.find()
+      .sort({
+        createdAt: -1
+      });
+
+    return res.json({
+
+      success: true,
+      incidents
+
+    });
+
+  } catch (err) {
+
+    console.log(
+      "Fetch incidents error:",
+      err
+    );
+
+    return res.status(500).json({
+      error: "Failed to fetch incidents"
+    });
+
+  }
+
+});
+
+// =====================================
 // SEND SINGLE SOS SMS
 // =====================================
 app.post("/send-sos", async (req, res) => {
@@ -655,14 +800,33 @@ app.post("/sos", async (req, res) => {
       payload
     );
 
-    // FIND CONTACTS
+    const incident = new Incident({
+
+      incidentId:
+        "GX-" + Date.now(),
+
+      userEmail:
+        payload.email,
+
+      type:
+        payload.type,
+
+      severity:
+        "HIGH",
+
+      location:
+        payload.location
+
+    });
+
+    await incident.save();
+
     const contacts = await Contact.find({
 
       userEmail: email
 
     });
 
-    // SEND ALERTS
     for (const contact of contacts) {
 
       const message =
@@ -702,10 +866,14 @@ ${payload.timestamp}`;
 
     }
 
-    // REALTIME ALERT EVENT
     io.emit(
       "guardian_alert",
       payload
+    );
+
+    io.emit(
+      "new_incident",
+      incident
     );
 
     return res.json({
@@ -713,7 +881,8 @@ ${payload.timestamp}`;
       success: true,
       message: "SOS broadcast sent",
       contactsAlerted: contacts.length,
-      alert: payload
+      alert: payload,
+      incident
 
     });
 
