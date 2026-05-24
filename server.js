@@ -269,6 +269,77 @@ app.get("/health", (req, res) => {
 });
 
 // =====================================
+// SYSTEM STATUS ROUTE
+// =====================================
+app.get("/status", async (req, res) => {
+
+  try {
+
+    const userCount =
+      await User.countDocuments();
+
+    const incidentCount =
+      await Incident.countDocuments();
+
+    const contactCount =
+      await Contact.countDocuments();
+
+    const evidenceCount =
+      await Evidence.countDocuments();
+
+    const locationCount =
+      await Location.countDocuments();
+
+    return res.json({
+
+      success: true,
+
+      system: "Guardian X",
+
+      status: "ONLINE",
+
+      database: "CONNECTED",
+
+      stats: {
+
+        users: userCount,
+
+        incidents: incidentCount,
+
+        contacts: contactCount,
+
+        evidence: evidenceCount,
+
+        locations: locationCount
+
+      },
+
+      timestamp: new Date()
+
+    });
+
+  } catch (err) {
+
+    console.log(
+      "Status route error:",
+      err
+    );
+
+    return res.status(500).json({
+
+      success: false,
+
+      status: "ERROR",
+
+      error: err.message
+
+    });
+
+  }
+
+});
+
+// =====================================
 // REGISTER ROUTE
 // =====================================
 app.post("/register", async (req, res) => {
@@ -288,9 +359,10 @@ app.post("/register", async (req, res) => {
 
     }
 
-    const existingUser = await User.findOne({
-      email
-    });
+    const existingUser =
+      await User.findOne({
+        email
+      });
 
     if (existingUser) {
 
@@ -300,10 +372,8 @@ app.post("/register", async (req, res) => {
 
     }
 
-    const hashedPassword = await bcrypt.hash(
-      password,
-      10
-    );
+    const hashedPassword =
+      await bcrypt.hash(password, 10);
 
     const newUser = new User({
 
@@ -317,13 +387,17 @@ app.post("/register", async (req, res) => {
     return res.json({
 
       success: true,
-      message: "User registered successfully"
+      message:
+        "User registered successfully"
 
     });
 
   } catch (err) {
 
-    console.log("Register error:", err);
+    console.log(
+      "Register error:",
+      err
+    );
 
     return res.status(500).json({
       error: "Server error"
@@ -348,14 +422,16 @@ app.post("/login", async (req, res) => {
     if (!email || !password) {
 
       return res.status(400).json({
-        error: "Missing email or password"
+        error:
+          "Missing email or password"
       });
 
     }
 
-    const user = await User.findOne({
-      email
-    });
+    const user =
+      await User.findOne({
+        email
+      });
 
     if (!user) {
 
@@ -365,10 +441,11 @@ app.post("/login", async (req, res) => {
 
     }
 
-    const isMatch = await bcrypt.compare(
-      password,
-      user.password
-    );
+    const isMatch =
+      await bcrypt.compare(
+        password,
+        user.password
+      );
 
     if (!isMatch) {
 
@@ -385,7 +462,8 @@ app.post("/login", async (req, res) => {
         email: user.email
       },
 
-      process.env.JWT_SECRET || "guardian_secret",
+      process.env.JWT_SECRET ||
+      "guardian_secret",
 
       {
         expiresIn: "7d"
@@ -403,7 +481,10 @@ app.post("/login", async (req, res) => {
 
   } catch (err) {
 
-    console.log("Login error:", err);
+    console.log(
+      "Login error:",
+      err
+    );
 
     return res.status(500).json({
       error: "Server error"
@@ -429,12 +510,14 @@ function verifyToken(req, res, next) {
 
   }
 
-  const token = authHeader.split(" ")[1];
+  const token =
+    authHeader.split(" ")[1];
 
   if (!token) {
 
     return res.status(401).json({
-      message: "Invalid token format"
+      message:
+        "Invalid token format"
     });
 
   }
@@ -444,7 +527,9 @@ function verifyToken(req, res, next) {
     const decoded = jwt.verify(
 
       token,
-      process.env.JWT_SECRET || "guardian_secret"
+
+      process.env.JWT_SECRET ||
+      "guardian_secret"
 
     );
 
@@ -455,7 +540,8 @@ function verifyToken(req, res, next) {
   } catch (err) {
 
     return res.status(403).json({
-      message: "Invalid or expired token"
+      message:
+        "Invalid or expired token"
     });
 
   }
@@ -479,612 +565,6 @@ app.get(
 
   }
 );
-
-// =====================================
-// ADD CONTACT
-// =====================================
-app.post("/add-contact", async (req, res) => {
-
-  try {
-
-    const {
-      userEmail,
-      name,
-      phone,
-      relationship
-    } = req.body;
-
-    if (
-      !userEmail ||
-      !name ||
-      !phone
-    ) {
-
-      return res.status(400).json({
-        error: "Missing required fields"
-      });
-
-    }
-
-    const newContact = new Contact({
-
-      userEmail,
-      name,
-      phone,
-      relationship
-
-    });
-
-    await newContact.save();
-
-    return res.json({
-
-      success: true,
-      message: "Emergency contact added",
-      contact: newContact
-
-    });
-
-  } catch (err) {
-
-    console.log("Add contact error:", err);
-
-    return res.status(500).json({
-      error: "Failed to add contact"
-    });
-
-  }
-
-});
-
-// =====================================
-// GET CONTACTS
-// =====================================
-app.get("/contacts/:email", async (req, res) => {
-
-  try {
-
-    const contacts = await Contact.find({
-
-      userEmail: req.params.email
-
-    });
-
-    return res.json({
-
-      success: true,
-      contacts
-
-    });
-
-  } catch (err) {
-
-    console.log("Fetch contacts error:", err);
-
-    return res.status(500).json({
-      error: "Failed to fetch contacts"
-    });
-
-  }
-
-});
-
-// =====================================
-// UPDATE LIVE LOCATION
-// =====================================
-app.post("/update-location", async (req, res) => {
-
-  try {
-
-    const {
-      userEmail,
-      latitude,
-      longitude,
-      accuracy
-    } = req.body;
-
-    if (
-      !userEmail ||
-      latitude === undefined ||
-      longitude === undefined
-    ) {
-
-      return res.status(400).json({
-        error: "Missing required fields"
-      });
-
-    }
-
-    const newLocation = new Location({
-
-      userEmail,
-      latitude,
-      longitude,
-      accuracy
-
-    });
-
-    await newLocation.save();
-
-    io.emit("live_location", {
-
-      userEmail,
-      latitude,
-      longitude,
-      accuracy,
-      timestamp: new Date()
-
-    });
-
-    return res.json({
-
-      success: true,
-      message: "Location updated",
-      location: newLocation
-
-    });
-
-  } catch (err) {
-
-    console.log("Location update error:", err);
-
-    return res.status(500).json({
-      error: "Failed to update location"
-    });
-
-  }
-
-});
-
-// =====================================
-// GET LAST LOCATION
-// =====================================
-app.get("/last-location/:email", async (req, res) => {
-
-  try {
-
-    const location = await Location.findOne({
-
-      userEmail: req.params.email
-
-    }).sort({
-
-      timestamp: -1
-
-    });
-
-    if (!location) {
-
-      return res.status(404).json({
-        error: "No location found"
-      });
-
-    }
-
-    return res.json({
-
-      success: true,
-      location
-
-    });
-
-  } catch (err) {
-
-    console.log("Fetch location error:", err);
-
-    return res.status(500).json({
-      error: "Failed to fetch location"
-    });
-
-  }
-
-});
-
-// =====================================
-// CREATE INCIDENT
-// =====================================
-app.post("/create-incident", async (req, res) => {
-
-  try {
-
-    const {
-      userEmail,
-      type,
-      severity,
-      location
-    } = req.body;
-
-    const incident = new Incident({
-
-      incidentId:
-        "GX-" + Date.now(),
-
-      userEmail,
-
-      type:
-        type || "SOS",
-
-      severity:
-        severity || "HIGH",
-
-      location:
-        location || "Unknown"
-
-    });
-
-    await incident.save();
-
-    io.emit(
-      "new_incident",
-      incident
-    );
-
-    return res.json({
-
-      success: true,
-      message: "Incident created",
-      incident
-
-    });
-
-  } catch (err) {
-
-    console.log(
-      "Create incident error:",
-      err
-    );
-
-    return res.status(500).json({
-      error: "Failed to create incident"
-    });
-
-  }
-
-});
-
-// =====================================
-// GET ALL INCIDENTS
-// =====================================
-app.get("/incidents", async (req, res) => {
-
-  try {
-
-    const incidents =
-      await Incident.find()
-      .sort({
-        createdAt: -1
-      });
-
-    return res.json({
-
-      success: true,
-      incidents
-
-    });
-
-  } catch (err) {
-
-    console.log(
-      "Fetch incidents error:",
-      err
-    );
-
-    return res.status(500).json({
-      error: "Failed to fetch incidents"
-    });
-
-  }
-
-});
-
-// =====================================
-// UPLOAD EVIDENCE
-// =====================================
-app.post("/upload-evidence", async (req, res) => {
-
-  try {
-
-    const {
-      incidentId,
-      userEmail,
-      type,
-      fileUrl,
-      description
-    } = req.body;
-
-    if (
-      !incidentId ||
-      !userEmail ||
-      !fileUrl
-    ) {
-
-      return res.status(400).json({
-        error: "Missing required fields"
-      });
-
-    }
-
-    const evidence = new Evidence({
-
-      incidentId,
-      userEmail,
-
-      type:
-        type || "PHOTO",
-
-      fileUrl,
-
-      description:
-        description || ""
-
-    });
-
-    await evidence.save();
-
-    io.emit(
-      "new_evidence",
-      evidence
-    );
-
-    return res.json({
-
-      success: true,
-      message: "Evidence uploaded",
-      evidence
-
-    });
-
-  } catch (err) {
-
-    console.log(
-      "Evidence upload error:",
-      err
-    );
-
-    return res.status(500).json({
-      error: "Failed to upload evidence"
-    });
-
-  }
-
-});
-
-// =====================================
-// GET INCIDENT EVIDENCE
-// =====================================
-app.get("/evidence/:incidentId", async (req, res) => {
-
-  try {
-
-    const evidence =
-      await Evidence.find({
-
-        incidentId:
-          req.params.incidentId
-
-      }).sort({
-
-        timestamp: -1
-
-      });
-
-    return res.json({
-
-      success: true,
-      evidence
-
-    });
-
-  } catch (err) {
-
-    console.log(
-      "Fetch evidence error:",
-      err
-    );
-
-    return res.status(500).json({
-      error: "Failed to fetch evidence"
-    });
-
-  }
-
-});
-
-// =====================================
-// SEND SINGLE SOS SMS
-// =====================================
-app.post("/send-sos", async (req, res) => {
-
-  try {
-
-    const {
-      to,
-      message
-    } = req.body;
-
-    const sms = await client.messages.create({
-
-      body: message,
-      from: process.env.TWILIO_PHONE_NUMBER,
-      to: to
-
-    });
-
-    return res.json({
-
-      success: true,
-      sid: sms.sid
-
-    });
-
-  } catch (error) {
-
-    console.log("Twilio error:", error);
-
-    return res.status(500).json({
-
-      success: false,
-      error: error.message
-
-    });
-
-  }
-
-});
-
-// =====================================
-// FULL SOS BROADCAST SYSTEM
-// =====================================
-app.post("/sos", async (req, res) => {
-
-  try {
-
-    const {
-      email,
-      location,
-      alertType
-    } = req.body;
-
-    const payload = {
-
-      type: alertType || "SOS",
-
-      email:
-        email || "unknown@guardian.com",
-
-      location:
-        location || "Location not provided",
-
-      timestamp:
-        new Date().toISOString(),
-
-      status: "ACTIVE"
-
-    };
-
-    console.log(
-      "🚨 Guardian Alert Triggered:",
-      payload
-    );
-
-    const incident = new Incident({
-
-      incidentId:
-        "GX-" + Date.now(),
-
-      userEmail:
-        payload.email,
-
-      type:
-        payload.type,
-
-      severity:
-        "HIGH",
-
-      location:
-        payload.location
-
-    });
-
-    await incident.save();
-
-    const contacts = await Contact.find({
-
-      userEmail: email
-
-    });
-
-    for (const contact of contacts) {
-
-      const message =
-`🚨 GUARDIAN X SOS ALERT
-
-${email} triggered an emergency alert.
-
-📍 Location:
-${location}
-
-⏰ Time:
-${payload.timestamp}`;
-
-      try {
-
-        await client.messages.create({
-
-          body: message,
-          from:
-            process.env.TWILIO_PHONE_NUMBER,
-          to: contact.phone
-
-        });
-
-        console.log(
-          `✅ SMS sent to ${contact.phone}`
-        );
-
-      } catch (smsError) {
-
-        console.log(
-          `❌ Failed SMS to ${contact.phone}:`,
-          smsError.message
-        );
-
-      }
-
-    }
-
-    io.emit(
-      "guardian_alert",
-      payload
-    );
-
-    io.emit(
-      "new_incident",
-      incident
-    );
-
-    return res.json({
-
-      success: true,
-      message: "SOS broadcast sent",
-      contactsAlerted: contacts.length,
-      alert: payload,
-      incident
-
-    });
-
-  } catch (err) {
-
-    console.log("SOS error:", err);
-
-    return res.status(500).json({
-      error: "Failed to trigger SOS alert"
-    });
-
-  }
-
-});
-
-// =====================================
-// SOCKET CONNECTION
-// =====================================
-io.on("connection", (socket) => {
-
-  console.log(
-    "🔌 Client connected:",
-    socket.id
-  );
-
-  socket.on("disconnect", () => {
-
-    console.log(
-      "❌ Client disconnected:",
-      socket.id
-    );
-
-  });
-
-});
 
 // =====================================
 // START SERVER
