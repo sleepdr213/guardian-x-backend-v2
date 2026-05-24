@@ -1,343 +1,19 @@
 // =====================================
-// IMPORTS
-// =====================================
-const express = require("express");
-const cors = require("cors");
-const jwt = require("jsonwebtoken");
-const bcrypt = require("bcryptjs");
-const mongoose = require("mongoose");
-const http = require("http");
-const { Server } = require("socket.io");
-const twilio = require("twilio");
-const rateLimit = require("express-rate-limit");
-
-// =====================================
-// APP SETUP
-// =====================================
-const app = express();
-const PORT = process.env.PORT || 3000;
-
-// =====================================
-// HTTP SERVER + SOCKET.IO
-// =====================================
-const server = http.createServer(app);
-
-const io = new Server(server, {
-  cors: {
-    origin: "*",
-    methods: ["GET", "POST"]
-  }
-});
-
-// =====================================
-// TWILIO SETUP
-// =====================================
-const client = twilio(
-  process.env.TWILIO_ACCOUNT_SID,
-  process.env.TWILIO_AUTH_TOKEN
-);
-
-// =====================================
-// MIDDLEWARE
-// =====================================
-app.use(cors({
-  origin: "*",
-  methods: ["GET", "POST", "PUT", "DELETE"]
-}));
-
-app.use(express.json());
-
-app.use(express.urlencoded({
-  extended: true
-}));
-
-// =====================================
-// RATE LIMITER
-// =====================================
-const limiter = rateLimit({
-
-  windowMs: 15 * 60 * 1000,
-
-  max: 100,
-
-  message: {
-    success: false,
-    error: "Too many requests. Please try again later."
-  }
-
-});
-
-app.use(limiter);
-
-// =====================================
-// MONGODB CONNECTION
-// =====================================
-mongoose.connect(process.env.MONGODB_URI)
-
-.then(() => {
-  console.log("✅ MongoDB connected");
-})
-
-.catch((err) => {
-  console.log("❌ MongoDB connection error:", err);
-});
-
-// =====================================
-// USER MODEL
-// =====================================
-const UserSchema = new mongoose.Schema({
-
-  email: {
-    type: String,
-    required: true,
-    unique: true,
-    trim: true
-  },
-
-  password: {
-    type: String,
-    required: true
-  }
-
-});
-
-const User = mongoose.model(
-  "User",
-  UserSchema
-);
-
-// =====================================
-// CONTACT MODEL
-// =====================================
-const ContactSchema = new mongoose.Schema({
-
-  userEmail: String,
-  name: String,
-  phone: String,
-  relationship: String,
-
-  createdAt: {
-    type: Date,
-    default: Date.now
-  }
-
-});
-
-const Contact = mongoose.model(
-  "Contact",
-  ContactSchema
-);
-
-// =====================================
-// LOCATION MODEL
-// =====================================
-const LocationSchema = new mongoose.Schema({
-
-  userEmail: String,
-  latitude: Number,
-  longitude: Number,
-  accuracy: Number,
-
-  timestamp: {
-    type: Date,
-    default: Date.now
-  }
-
-});
-
-const Location = mongoose.model(
-  "Location",
-  LocationSchema
-);
-
-// =====================================
-// INCIDENT MODEL
-// =====================================
-const IncidentSchema = new mongoose.Schema({
-
-  incidentId: String,
-
-  userEmail: String,
-
-  type: {
-    type: String,
-    default: "SOS"
-  },
-
-  severity: {
-    type: String,
-    default: "HIGH"
-  },
-
-  location: String,
-
-  status: {
-    type: String,
-    default: "ACTIVE"
-  },
-
-  createdAt: {
-    type: Date,
-    default: Date.now
-  }
-
-});
-
-const Incident = mongoose.model(
-  "Incident",
-  IncidentSchema
-);
-
-// =====================================
-// EVIDENCE MODEL
-// =====================================
-const EvidenceSchema = new mongoose.Schema({
-
-  incidentId: String,
-  userEmail: String,
-  type: String,
-  fileUrl: String,
-  description: String,
-
-  timestamp: {
-    type: Date,
-    default: Date.now
-  }
-
-});
-
-const Evidence = mongoose.model(
-  "Evidence",
-  EvidenceSchema
-);
-
-// =====================================
-// JWT VERIFY MIDDLEWARE
-// =====================================
-function verifyToken(req, res, next) {
-
-  const authHeader =
-    req.headers["authorization"];
-
-  if (!authHeader) {
-
-    return res.status(401).json({
-      message: "No token provided"
-    });
-
-  }
-
-  const token =
-    authHeader.split(" ")[1];
-
-  try {
-
-    const decoded = jwt.verify(
-      token,
-      process.env.JWT_SECRET
-    );
-
-    req.user = decoded;
-
-    next();
-
-  } catch (err) {
-
-    return res.status(403).json({
-      message: "Invalid token"
-    });
-
-  }
-
-}
-
-// =====================================
-// ROOT ROUTE
-// =====================================
-app.get("/", (req, res) => {
-
-  res.send("🚀 Guardian X Backend Running");
-
-});
-
-// =====================================
-// HEALTH ROUTE
-// =====================================
-app.get("/health", (req, res) => {
-
-  return res.json({
-    success: true,
-    message: "Guardian X API Healthy"
-  });
-
-});
-
-// =====================================
-// STATUS ROUTE
-// =====================================
-app.get("/status", async (req, res) => {
-
-  try {
-
-    const userCount =
-      await User.countDocuments();
-
-    const incidentCount =
-      await Incident.countDocuments();
-
-    const contactCount =
-      await Contact.countDocuments();
-
-    const evidenceCount =
-      await Evidence.countDocuments();
-
-    const locationCount =
-      await Location.countDocuments();
-
-    return res.json({
-
-      success: true,
-
-      system: "Guardian X",
-
-      status: "ONLINE",
-
-      database: "CONNECTED",
-
-      stats: {
-
-        users: userCount,
-        incidents: incidentCount,
-        contacts: contactCount,
-        evidence: evidenceCount,
-        locations: locationCount
-
-      },
-
-      timestamp: new Date()
-
-    });
-
-  } catch (err) {
-
-    return res.status(500).json({
-      success: false,
-      error: err.message
-    });
-
-  }
-
-});
-
-// =====================================
 // REGISTER ROUTE
 // =====================================
 app.post("/register", async (req, res) => {
 
   try {
 
-    const { email, password } =
-      req.body;
+    const { email, password } = req.body;
+
+    if (!email || !password) {
+
+      return res.status(400).json({
+        error: "Missing email or password"
+      });
+
+    }
 
     const existingUser =
       await User.findOne({ email });
@@ -354,25 +30,21 @@ app.post("/register", async (req, res) => {
       await bcrypt.hash(password, 10);
 
     const newUser = new User({
-
       email,
       password: hashedPassword
-
     });
 
     await newUser.save();
 
     return res.json({
-
       success: true,
-      message: "User registered"
-
+      message: "User registered successfully"
     });
 
   } catch (err) {
 
     return res.status(500).json({
-      error: "Register failed"
+      error: "Registration failed"
     });
 
   }
@@ -386,8 +58,7 @@ app.post("/login", async (req, res) => {
 
   try {
 
-    const { email, password } =
-      req.body;
+    const { email, password } = req.body;
 
     const user =
       await User.findOne({ email });
@@ -400,13 +71,13 @@ app.post("/login", async (req, res) => {
 
     }
 
-    const isMatch =
+    const validPassword =
       await bcrypt.compare(
         password,
         user.password
       );
 
-    if (!isMatch) {
+    if (!validPassword) {
 
       return res.status(401).json({
         error: "Invalid password"
@@ -432,6 +103,7 @@ app.post("/login", async (req, res) => {
     return res.json({
 
       success: true,
+      message: "Login successful",
       token
 
     });
@@ -665,37 +337,5 @@ ${location}`,
     });
 
   }
-
-});
-
-// =====================================
-// SOCKET CONNECTION
-// =====================================
-io.on("connection", (socket) => {
-
-  console.log(
-    "🔌 Client connected:",
-    socket.id
-  );
-
-  socket.on("disconnect", () => {
-
-    console.log(
-      "❌ Client disconnected:",
-      socket.id
-    );
-
-  });
-
-});
-
-// =====================================
-// START SERVER
-// =====================================
-server.listen(PORT, () => {
-
-  console.log(
-    `🚀 Guardian backend running on port ${PORT}`
-  );
 
 });
