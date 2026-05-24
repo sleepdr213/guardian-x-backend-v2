@@ -9,6 +9,7 @@ const mongoose = require("mongoose");
 const http = require("http");
 const { Server } = require("socket.io");
 const twilio = require("twilio");
+const rateLimit = require("express-rate-limit");
 
 // =====================================
 // APP SETUP
@@ -49,6 +50,24 @@ app.use(express.json());
 app.use(express.urlencoded({
   extended: true
 }));
+
+// =====================================
+// RATE LIMITER
+// =====================================
+const limiter = rateLimit({
+
+  windowMs: 15 * 60 * 1000,
+
+  max: 100,
+
+  message: {
+    success: false,
+    error: "Too many requests. Please try again later."
+  }
+
+});
+
+app.use(limiter);
 
 // =====================================
 // MONGODB CONNECTION
@@ -92,25 +111,10 @@ const User = mongoose.model(
 // =====================================
 const ContactSchema = new mongoose.Schema({
 
-  userEmail: {
-    type: String,
-    required: true
-  },
-
-  name: {
-    type: String,
-    required: true
-  },
-
-  phone: {
-    type: String,
-    required: true
-  },
-
-  relationship: {
-    type: String,
-    default: "Contact"
-  },
+  userEmail: String,
+  name: String,
+  phone: String,
+  relationship: String,
 
   createdAt: {
     type: Date,
@@ -129,25 +133,10 @@ const Contact = mongoose.model(
 // =====================================
 const LocationSchema = new mongoose.Schema({
 
-  userEmail: {
-    type: String,
-    required: true
-  },
-
-  latitude: {
-    type: Number,
-    required: true
-  },
-
-  longitude: {
-    type: Number,
-    required: true
-  },
-
-  accuracy: {
-    type: Number,
-    default: 0
-  },
+  userEmail: String,
+  latitude: Number,
+  longitude: Number,
+  accuracy: Number,
 
   timestamp: {
     type: Date,
@@ -166,16 +155,9 @@ const Location = mongoose.model(
 // =====================================
 const IncidentSchema = new mongoose.Schema({
 
-  incidentId: {
-    type: String,
-    required: true,
-    unique: true
-  },
+  incidentId: String,
 
-  userEmail: {
-    type: String,
-    required: true
-  },
+  userEmail: String,
 
   type: {
     type: String,
@@ -187,10 +169,7 @@ const IncidentSchema = new mongoose.Schema({
     default: "HIGH"
   },
 
-  location: {
-    type: String,
-    default: "Unknown"
-  },
+  location: String,
 
   status: {
     type: String,
@@ -214,30 +193,11 @@ const Incident = mongoose.model(
 // =====================================
 const EvidenceSchema = new mongoose.Schema({
 
-  incidentId: {
-    type: String,
-    required: true
-  },
-
-  userEmail: {
-    type: String,
-    required: true
-  },
-
-  type: {
-    type: String,
-    default: "PHOTO"
-  },
-
-  fileUrl: {
-    type: String,
-    required: true
-  },
-
-  description: {
-    type: String,
-    default: ""
-  },
+  incidentId: String,
+  userEmail: String,
+  type: String,
+  fileUrl: String,
+  description: String,
 
   timestamp: {
     type: Date,
@@ -270,14 +230,6 @@ function verifyToken(req, res, next) {
   const token =
     authHeader.split(" ")[1];
 
-  if (!token) {
-
-    return res.status(401).json({
-      message: "Invalid token format"
-    });
-
-  }
-
   try {
 
     const decoded = jwt.verify(
@@ -292,7 +244,7 @@ function verifyToken(req, res, next) {
   } catch (err) {
 
     return res.status(403).json({
-      message: "Invalid or expired token"
+      message: "Invalid token"
     });
 
   }
@@ -380,34 +332,341 @@ app.get("/status", async (req, res) => {
 // =====================================
 // REGISTER ROUTE
 // =====================================
+app.post("/register", async (req, res) => {
+
+  try {
+
+    const { email, password } =
+      req.body;
+
+    const existingUser =
+      await User.findOne({ email });
+
+    if (existingUser) {
+
+      return res.status(400).json({
+        error: "User already exists"
+      });
+
+    }
+
+    const hashedPassword =
+      await bcrypt.hash(password, 10);
+
+    const newUser = new User({
+
+      email,
+      password: hashedPassword
+
+    });
+
+    await newUser.save();
+
+    return res.json({
+
+      success: true,
+      message: "User registered"
+
+    });
+
+  } catch (err) {
+
+    return res.status(500).json({
+      error: "Register failed"
+    });
+
+  }
+
+});
 
 // =====================================
 // LOGIN ROUTE
 // =====================================
+app.post("/login", async (req, res) => {
+
+  try {
+
+    const { email, password } =
+      req.body;
+
+    const user =
+      await User.findOne({ email });
+
+    if (!user) {
+
+      return res.status(401).json({
+        error: "User not found"
+      });
+
+    }
+
+    const isMatch =
+      await bcrypt.compare(
+        password,
+        user.password
+      );
+
+    if (!isMatch) {
+
+      return res.status(401).json({
+        error: "Invalid password"
+      });
+
+    }
+
+    const token = jwt.sign(
+
+      {
+        userId: user._id,
+        email: user.email
+      },
+
+      process.env.JWT_SECRET,
+
+      {
+        expiresIn: "7d"
+      }
+
+    );
+
+    return res.json({
+
+      success: true,
+      token
+
+    });
+
+  } catch (err) {
+
+    return res.status(500).json({
+      error: "Login failed"
+    });
+
+  }
+
+});
 
 // =====================================
 // PROFILE ROUTE
 // =====================================
+app.get(
+  "/api/profile",
+  verifyToken,
+  (req, res) => {
+
+    return res.json({
+
+      success: true,
+      user: req.user
+
+    });
+
+  }
+);
 
 // =====================================
-// CONTACT ROUTES
+// ADD CONTACT
 // =====================================
+app.post("/add-contact", async (req, res) => {
+
+  try {
+
+    const contact =
+      new Contact(req.body);
+
+    await contact.save();
+
+    return res.json({
+
+      success: true,
+      contact
+
+    });
+
+  } catch (err) {
+
+    return res.status(500).json({
+      error: "Failed to add contact"
+    });
+
+  }
+
+});
 
 // =====================================
-// LOCATION ROUTES
+// GET CONTACTS
 // =====================================
+app.get("/contacts/:email", async (req, res) => {
+
+  const contacts =
+    await Contact.find({
+
+      userEmail:
+        req.params.email
+
+    });
+
+  return res.json({
+
+    success: true,
+    contacts
+
+  });
+
+});
 
 // =====================================
-// INCIDENT ROUTES
+// UPDATE LOCATION
 // =====================================
+app.post("/update-location", async (req, res) => {
+
+  const location =
+    new Location(req.body);
+
+  await location.save();
+
+  io.emit(
+    "live_location",
+    location
+  );
+
+  return res.json({
+
+    success: true,
+    location
+
+  });
+
+});
 
 // =====================================
-// EVIDENCE ROUTES
+// CREATE INCIDENT
 // =====================================
+app.post("/create-incident", async (req, res) => {
+
+  const incident =
+    new Incident({
+
+      incidentId:
+        "GX-" + Date.now(),
+
+      ...req.body
+
+    });
+
+  await incident.save();
+
+  io.emit(
+    "new_incident",
+    incident
+  );
+
+  return res.json({
+
+    success: true,
+    incident
+
+  });
+
+});
 
 // =====================================
-// SOS ROUTES
+// GET INCIDENTS
 // =====================================
+app.get("/incidents", async (req, res) => {
+
+  const incidents =
+    await Incident.find()
+    .sort({ createdAt: -1 });
+
+  return res.json({
+
+    success: true,
+    incidents
+
+  });
+
+});
+
+// =====================================
+// UPLOAD EVIDENCE
+// =====================================
+app.post("/upload-evidence", async (req, res) => {
+
+  const evidence =
+    new Evidence(req.body);
+
+  await evidence.save();
+
+  io.emit(
+    "new_evidence",
+    evidence
+  );
+
+  return res.json({
+
+    success: true,
+    evidence
+
+  });
+
+});
+
+// =====================================
+// SEND SOS
+// =====================================
+app.post("/sos", async (req, res) => {
+
+  try {
+
+    const {
+      email,
+      location
+    } = req.body;
+
+    const contacts =
+      await Contact.find({
+        userEmail: email
+      });
+
+    for (const contact of contacts) {
+
+      await client.messages.create({
+
+        body:
+`🚨 GUARDIAN X SOS ALERT
+
+${email} triggered an emergency alert.
+
+📍 Location:
+${location}`,
+
+        from:
+          process.env.TWILIO_PHONE_NUMBER,
+
+        to: contact.phone
+
+      });
+
+    }
+
+    return res.json({
+
+      success: true,
+      contactsAlerted:
+        contacts.length
+
+    });
+
+  } catch (err) {
+
+    return res.status(500).json({
+      error: "SOS failed"
+    });
+
+  }
+
+});
 
 // =====================================
 // SOCKET CONNECTION
