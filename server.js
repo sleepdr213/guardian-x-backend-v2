@@ -25,11 +25,13 @@ if (
   !process.env.JWT_SECRET ||
   !process.env.MONGODB_URI
 ) {
+
   console.error(
     "❌ Missing environment variables"
   );
 
   process.exit(1);
+
 }
 
 // =====================================
@@ -38,7 +40,9 @@ if (
 const server = http.createServer(app);
 
 const io = new Server(server, {
+
   cors: {
+
     origin:
       process.env.CLIENT_URL || "*",
 
@@ -50,16 +54,39 @@ const io = new Server(server, {
     ],
 
     credentials: true
+
   }
+
 });
 
 // =====================================
 // TWILIO SETUP
 // =====================================
-const client = twilio(
-  process.env.TWILIO_ACCOUNT_SID,
+let client = null;
+
+if (
+  process.env.TWILIO_ACCOUNT_SID &&
   process.env.TWILIO_AUTH_TOKEN
-);
+) {
+
+  client = twilio(
+
+    process.env.TWILIO_ACCOUNT_SID,
+    process.env.TWILIO_AUTH_TOKEN
+
+  );
+
+  console.log(
+    "✅ Twilio configured"
+  );
+
+} else {
+
+  console.log(
+    "⚠️ Twilio environment variables missing"
+  );
+
+}
 
 // =====================================
 // SECURITY + MIDDLEWARE
@@ -67,6 +94,7 @@ const client = twilio(
 app.use(helmet());
 
 app.use(cors({
+
   origin:
     process.env.CLIENT_URL || "*",
 
@@ -78,6 +106,7 @@ app.use(cors({
   ],
 
   credentials: true
+
 }));
 
 app.use(express.json());
@@ -97,9 +126,12 @@ const limiter = rateLimit({
   max: 100,
 
   message: {
+
     success: false,
+
     error:
       "Too many requests. Please try again later."
+
   }
 
 });
@@ -110,11 +142,14 @@ app.use(limiter);
 // MONGODB CONNECTION
 // =====================================
 mongoose.connect(
+
   process.env.MONGODB_URI,
+
   {
     serverSelectionTimeoutMS: 5000,
     socketTimeoutMS: 45000
   }
+
 )
 
 .then(() => {
@@ -133,6 +168,20 @@ mongoose.connect(
   );
 
 });
+
+// =====================================
+// MONGODB DISCONNECT LOGGER
+// =====================================
+mongoose.connection.on(
+  "disconnected",
+  () => {
+
+    console.log(
+      "⚠️ MongoDB disconnected"
+    );
+
+  }
+);
 
 // =====================================
 // USER MODEL
@@ -342,8 +391,10 @@ function verifyToken(
   if (!authHeader) {
 
     return res.status(401).json({
+
       success: false,
       error: "No token provided"
+
     });
 
   }
@@ -354,9 +405,10 @@ function verifyToken(
   if (!token) {
 
     return res.status(401).json({
+
       success: false,
-      error:
-        "Invalid token format"
+      error: "Invalid token format"
+
     });
 
   }
@@ -364,8 +416,10 @@ function verifyToken(
   try {
 
     const decoded = jwt.verify(
+
       token,
       process.env.JWT_SECRET
+
     );
 
     req.user = decoded;
@@ -375,9 +429,10 @@ function verifyToken(
   } catch (err) {
 
     return res.status(403).json({
+
       success: false,
-      error:
-        "Invalid or expired token"
+      error: "Invalid or expired token"
+
     });
 
   }
@@ -402,9 +457,10 @@ function verifyAdmin(
   ) {
 
     return res.status(403).json({
+
       success: false,
-      error:
-        "Unauthorized admin access"
+      error: "Unauthorized admin access"
+
     });
 
   }
@@ -430,9 +486,10 @@ app.get("/", (req, res) => {
 app.get("/health", (req, res) => {
 
   return res.json({
+
     success: true,
-    message:
-      "Guardian X API Healthy"
+    message: "Guardian X API Healthy"
+
   });
 
 });
@@ -440,235 +497,235 @@ app.get("/health", (req, res) => {
 // =====================================
 // STATUS ROUTE
 // =====================================
-app.get(
-  "/status",
-  async (req, res) => {
+app.get("/status", async (req, res) => {
 
-    try {
+  try {
 
-      const userCount =
-        await User.countDocuments();
+    const userCount =
+      await User.countDocuments();
 
-      const incidentCount =
-        await Incident.countDocuments();
+    const incidentCount =
+      await Incident.countDocuments();
 
-      const contactCount =
-        await Contact.countDocuments();
+    const contactCount =
+      await Contact.countDocuments();
 
-      const evidenceCount =
-        await Evidence.countDocuments();
+    const evidenceCount =
+      await Evidence.countDocuments();
 
-      const locationCount =
-        await Location.countDocuments();
+    const locationCount =
+      await Location.countDocuments();
 
-      return res.json({
+    return res.json({
 
-        success: true,
+      success: true,
 
-        system: "Guardian X",
+      system: "Guardian X",
 
-        status: "ONLINE",
+      status: "ONLINE",
 
-        database: "CONNECTED",
+      database: "CONNECTED",
 
-        stats: {
+      stats: {
 
-          users: userCount,
-          incidents: incidentCount,
-          contacts: contactCount,
-          evidence: evidenceCount,
-          locations: locationCount
+        users: userCount,
+        incidents: incidentCount,
+        contacts: contactCount,
+        evidence: evidenceCount,
+        locations: locationCount
 
-        },
+      },
 
-        timestamp:
-          new Date()
+      timestamp:
+        new Date()
 
-      });
+    });
 
-    } catch (err) {
+  } catch (err) {
 
-      return res.status(500).json({
-        success: false,
-        error: err.message
-      });
+    return res.status(500).json({
 
-    }
+      success: false,
+      error: err.message
+
+    });
 
   }
-);
+
+});
 
 // =====================================
 // REGISTER ROUTE
 // =====================================
-app.post(
-  "/register",
-  async (req, res) => {
+app.post("/register", async (req, res) => {
 
-    try {
+  try {
 
-      const {
-        email,
-        password
-      } = req.body;
+    const {
+      email,
+      password
+    } = req.body;
 
-      if (
-        !email ||
-        !password
-      ) {
+    if (
+      !email ||
+      !password
+    ) {
 
-        return res.status(400).json({
-          success: false,
-          error:
-            "Missing email or password"
-        });
+      return res.status(400).json({
 
-      }
-
-      const existingUser =
-        await User.findOne({
-          email
-        });
-
-      if (existingUser) {
-
-        return res.status(400).json({
-          success: false,
-          error:
-            "User already exists"
-        });
-
-      }
-
-      const hashedPassword =
-        await bcrypt.hash(
-          password,
-          10
-        );
-
-      const newUser =
-        new User({
-          email,
-          password:
-            hashedPassword
-        });
-
-      await newUser.save();
-
-      return res.json({
-        success: true,
-        message:
-          "User registered successfully"
-      });
-
-    } catch (err) {
-
-      return res.status(500).json({
         success: false,
-        error:
-          "Registration failed"
+        error: "Missing email or password"
+
       });
 
     }
 
+    const existingUser =
+      await User.findOne({
+        email
+      });
+
+    if (existingUser) {
+
+      return res.status(400).json({
+
+        success: false,
+        error: "User already exists"
+
+      });
+
+    }
+
+    const hashedPassword =
+      await bcrypt.hash(
+        password,
+        10
+      );
+
+    const newUser = new User({
+
+      email,
+      password: hashedPassword
+
+    });
+
+    await newUser.save();
+
+    return res.json({
+
+      success: true,
+      message:
+        "User registered successfully"
+
+    });
+
+  } catch (err) {
+
+    return res.status(500).json({
+
+      success: false,
+      error: "Registration failed"
+
+    });
+
   }
-);
+
+});
 
 // =====================================
 // LOGIN ROUTE
 // =====================================
-app.post(
-  "/login",
-  async (req, res) => {
+app.post("/login", async (req, res) => {
 
-    try {
+  try {
 
-      const {
-        email,
-        password
-      } = req.body;
+    const {
+      email,
+      password
+    } = req.body;
 
-      if (
-        !email ||
-        !password
-      ) {
+    if (
+      !email ||
+      !password
+    ) {
 
-        return res.status(400).json({
-          success: false,
-          error:
-            "Missing email or password"
-        });
+      return res.status(400).json({
 
-      }
-
-      const user =
-        await User.findOne({
-          email
-        });
-
-      if (!user) {
-
-        return res.status(401).json({
-          success: false,
-          error:
-            "User not found"
-        });
-
-      }
-
-      const validPassword =
-        await bcrypt.compare(
-          password,
-          user.password
-        );
-
-      if (!validPassword) {
-
-        return res.status(401).json({
-          success: false,
-          error:
-            "Invalid password"
-        });
-
-      }
-
-      const token = jwt.sign(
-
-        {
-          userId: user._id,
-          email: user.email
-        },
-
-        process.env.JWT_SECRET,
-
-        {
-          expiresIn: "7d"
-        }
-
-      );
-
-      return res.json({
-
-        success: true,
-        message:
-          "Login successful",
-
-        token
-
-      });
-
-    } catch (err) {
-
-      return res.status(500).json({
         success: false,
-        error:
-          "Login failed"
+        error: "Missing email or password"
+
       });
 
     }
 
+    const user =
+      await User.findOne({
+        email
+      });
+
+    if (!user) {
+
+      return res.status(401).json({
+
+        success: false,
+        error: "User not found"
+
+      });
+
+    }
+
+    const validPassword =
+      await bcrypt.compare(
+        password,
+        user.password
+      );
+
+    if (!validPassword) {
+
+      return res.status(401).json({
+
+        success: false,
+        error: "Invalid password"
+
+      });
+
+    }
+
+    const token = jwt.sign(
+
+      {
+        userId: user._id,
+        email: user.email
+      },
+
+      process.env.JWT_SECRET,
+
+      {
+        expiresIn: "7d"
+      }
+
+    );
+
+    return res.json({
+
+      success: true,
+      message: "Login successful",
+      token
+
+    });
+
+  } catch (err) {
+
+    return res.status(500).json({
+
+      success: false,
+      error: "Login failed"
+
+    });
+
   }
-);
+
+});
 
 // =====================================
 // PROFILE ROUTE
@@ -679,364 +736,11 @@ app.get(
   (req, res) => {
 
     return res.json({
+
       success: true,
       user: req.user
+
     });
-
-  }
-);
-
-// =====================================
-// ADD CONTACT
-// =====================================
-app.post(
-  "/add-contact",
-  async (req, res) => {
-
-    try {
-
-      const {
-        userEmail,
-        name,
-        phone,
-        relationship
-      } = req.body;
-
-      if (
-        !userEmail ||
-        !name ||
-        !phone
-      ) {
-
-        return res.status(400).json({
-          success: false,
-          error:
-            "Missing required contact fields"
-        });
-
-      }
-
-      const contact =
-        new Contact({
-
-          userEmail,
-          name,
-          phone,
-          relationship
-
-        });
-
-      await contact.save();
-
-      return res.json({
-        success: true,
-        contact
-      });
-
-    } catch (err) {
-
-      return res.status(500).json({
-        success: false,
-        error:
-          "Failed to add contact"
-      });
-
-    }
-
-  }
-);
-
-// =====================================
-// GET CONTACTS
-// =====================================
-app.get(
-  "/contacts/:email",
-  async (req, res) => {
-
-    try {
-
-      const contacts =
-        await Contact.find({
-
-          userEmail:
-            req.params.email
-
-        });
-
-      return res.json({
-        success: true,
-        contacts
-      });
-
-    } catch (err) {
-
-      return res.status(500).json({
-        success: false,
-        error:
-          "Failed to fetch contacts"
-      });
-
-    }
-
-  }
-);
-
-// =====================================
-// UPDATE LOCATION
-// =====================================
-app.post(
-  "/update-location",
-  async (req, res) => {
-
-    try {
-
-      const location =
-        new Location(req.body);
-
-      await location.save();
-
-      io.emit(
-        "live_location",
-        location
-      );
-
-      return res.json({
-        success: true,
-        location
-      });
-
-    } catch (err) {
-
-      return res.status(500).json({
-        success: false,
-        error:
-          "Failed to update location"
-      });
-
-    }
-
-  }
-);
-
-// =====================================
-// CREATE INCIDENT
-// =====================================
-app.post(
-  "/create-incident",
-  async (req, res) => {
-
-    try {
-
-      const incident =
-        new Incident({
-
-          incidentId:
-            "GX-" + Date.now(),
-
-          ...req.body
-
-        });
-
-      await incident.save();
-
-      io.emit(
-        "new_incident",
-        incident
-      );
-
-      return res.json({
-        success: true,
-        incident
-      });
-
-    } catch (err) {
-
-      return res.status(500).json({
-        success: false,
-        error:
-          "Failed to create incident"
-      });
-
-    }
-
-  }
-);
-
-// =====================================
-// GET INCIDENTS
-// =====================================
-app.get(
-  "/incidents",
-  async (req, res) => {
-
-    try {
-
-      const incidents =
-        await Incident.find()
-        .sort({
-          createdAt: -1
-        });
-
-      return res.json({
-        success: true,
-        incidents
-      });
-
-    } catch (err) {
-
-      return res.status(500).json({
-        success: false,
-        error:
-          "Failed to fetch incidents"
-      });
-
-    }
-
-  }
-);
-
-// =====================================
-// RESOLVE INCIDENT
-// =====================================
-app.put(
-  "/resolve-incident/:id",
-  verifyAdmin,
-  async (req, res) => {
-
-    try {
-
-      const updatedIncident =
-        await Incident.findByIdAndUpdate(
-
-          req.params.id,
-
-          {
-            status: "RESOLVED"
-          },
-
-          {
-            new: true
-          }
-
-        );
-
-      return res.json({
-        success: true,
-        incident:
-          updatedIncident
-      });
-
-    } catch (err) {
-
-      return res.status(500).json({
-        success: false,
-        error:
-          "Failed to resolve incident"
-      });
-
-    }
-
-  }
-);
-
-// =====================================
-// DELETE INCIDENT
-// =====================================
-app.delete(
-  "/delete-incident/:id",
-  verifyAdmin,
-  async (req, res) => {
-
-    try {
-
-      await Incident.findByIdAndDelete(
-        req.params.id
-      );
-
-      return res.json({
-        success: true,
-        message:
-          "Incident deleted"
-      });
-
-    } catch (err) {
-
-      return res.status(500).json({
-        success: false,
-        error:
-          "Failed to delete incident"
-      });
-
-    }
-
-  }
-);
-
-// =====================================
-// GET ALL USERS
-// =====================================
-app.get(
-  "/admin/users",
-  verifyAdmin,
-  async (req, res) => {
-
-    try {
-
-      const users =
-        await User.find()
-        .select("-password");
-
-      return res.json({
-        success: true,
-        users
-      });
-
-    } catch (err) {
-
-      return res.status(500).json({
-        success: false,
-        error:
-          "Failed to fetch users"
-      });
-
-    }
-
-  }
-);
-
-// =====================================
-// UPLOAD EVIDENCE
-// =====================================
-app.post(
-  "/upload-evidence",
-  async (req, res) => {
-
-    try {
-
-      const evidence =
-        new Evidence(req.body);
-
-      await evidence.save();
-
-      io.emit(
-        "new_evidence",
-        evidence
-      );
-
-      return res.json({
-        success: true,
-        evidence
-      });
-
-    } catch (err) {
-
-      return res.status(500).json({
-        success: false,
-        error:
-          "Failed to upload evidence"
-      });
-
-    }
 
   }
 );
@@ -1044,40 +748,51 @@ app.post(
 // =====================================
 // SOS ROUTE
 // =====================================
-app.post(
-  "/sos",
-  async (req, res) => {
+app.post("/sos", async (req, res) => {
 
-    try {
+  try {
 
-      const {
-        email,
-        location
-      } = req.body;
+    if (!client) {
 
-      if (
-        !email ||
-        !location
-      ) {
+      return res.status(500).json({
 
-        return res.status(400).json({
-          success: false,
-          error:
-            "Missing email or location"
-        });
+        success: false,
+        error: "Twilio not configured"
 
-      }
+      });
 
-      const contacts =
-        await Contact.find({
-          userEmail: email
-        });
+    }
 
-      for (const contact of contacts) {
+    const {
+      email,
+      location
+    } = req.body;
 
-        await client.messages.create({
+    if (
+      !email ||
+      !location
+    ) {
 
-          body:
+      return res.status(400).json({
+
+        success: false,
+        error:
+          "Missing email or location"
+
+      });
+
+    }
+
+    const contacts =
+      await Contact.find({
+        userEmail: email
+      });
+
+    for (const contact of contacts) {
+
+      await client.messages.create({
+
+        body:
 `🚨 GUARDIAN X SOS ALERT
 
 ${email} triggered an emergency alert.
@@ -1085,35 +800,36 @@ ${email} triggered an emergency alert.
 📍 Location:
 ${location}`,
 
-          from:
-            process.env.TWILIO_PHONE_NUMBER,
+        from:
+          process.env.TWILIO_PHONE_NUMBER,
 
-          to:
-            contact.phone
+        to:
+          contact.phone
 
-        });
-
-      }
-
-      return res.json({
-
-        success: true,
-        contactsAlerted:
-          contacts.length
-
-      });
-
-    } catch (err) {
-
-      return res.status(500).json({
-        success: false,
-        error: "SOS failed"
       });
 
     }
 
+    return res.json({
+
+      success: true,
+      contactsAlerted:
+        contacts.length
+
+    });
+
+  } catch (err) {
+
+    return res.status(500).json({
+
+      success: false,
+      error: "SOS failed"
+
+    });
+
   }
-);
+
+});
 
 // =====================================
 // 404 ROUTE HANDLER
