@@ -39,7 +39,7 @@ const client = twilio(
 );
 
 // =====================================
-// SECURITY MIDDLEWARE
+// SECURITY + MIDDLEWARE
 // =====================================
 app.use(helmet());
 
@@ -71,13 +71,7 @@ app.use(limiter);
 // =====================================
 // MONGODB CONNECTION
 // =====================================
-mongoose.connect(
-  process.env.MONGODB_URI,
-  {
-    useNewUrlParser: true,
-    useUnifiedTopology: true
-  }
-)
+mongoose.connect(process.env.MONGODB_URI)
 
 .then(() => {
 
