@@ -71,7 +71,9 @@ app.use(limiter);
 // =====================================
 // MONGODB CONNECTION
 // =====================================
-mongoose.connect(process.env.MONGODB_URI)
+mongoose.connect(process.env.MONGODB_URI, {
+  serverSelectionTimeoutMS: 5000
+})
 
 .then(() => {
 
@@ -507,6 +509,15 @@ app.post("/login", async (req, res) => {
       password
     } = req.body;
 
+    if (!email || !password) {
+
+      return res.status(400).json({
+        success: false,
+        error: "Missing email or password"
+      });
+
+    }
+
     const user =
       await User.findOne({ email });
 
@@ -591,8 +602,28 @@ app.post("/add-contact", async (req, res) => {
 
   try {
 
-    const contact =
-      new Contact(req.body);
+    const {
+      userEmail,
+      name,
+      phone,
+      relationship
+    } = req.body;
+
+    if (!userEmail || !name || !phone) {
+
+      return res.status(400).json({
+        success: false,
+        error: "Missing required contact fields"
+      });
+
+    }
+
+    const contact = new Contact({
+      userEmail,
+      name,
+      phone,
+      relationship
+    });
 
     await contact.save();
 
@@ -888,6 +919,15 @@ app.post("/sos", async (req, res) => {
       email,
       location
     } = req.body;
+
+    if (!email || !location) {
+
+      return res.status(400).json({
+        success: false,
+        error: "Missing email or location"
+      });
+
+    }
 
     const contacts =
       await Contact.find({
