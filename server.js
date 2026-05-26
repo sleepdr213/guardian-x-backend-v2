@@ -10,6 +10,7 @@ const http = require("http");
 const { Server } = require("socket.io");
 const twilio = require("twilio");
 const rateLimit = require("express-rate-limit");
+const helmet = require("helmet");
 
 // =====================================
 // APP SETUP
@@ -25,7 +26,7 @@ const server = http.createServer(app);
 const io = new Server(server, {
   cors: {
     origin: "*",
-    methods: ["GET", "POST"]
+    methods: ["GET", "POST", "PUT", "DELETE"]
   }
 });
 
@@ -38,8 +39,10 @@ const client = twilio(
 );
 
 // =====================================
-// MIDDLEWARE
+// SECURITY MIDDLEWARE
 // =====================================
+app.use(helmet());
+
 app.use(cors({
   origin: "*",
   methods: ["GET", "POST", "PUT", "DELETE"]
@@ -52,14 +55,14 @@ app.use(express.urlencoded({
 }));
 
 // =====================================
-// RATE LIMITER
+// API RATE LIMITER
 // =====================================
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 100,
   message: {
     success: false,
-    error: "Too many requests"
+    error: "Too many requests. Please try again later."
   }
 });
 
@@ -68,14 +71,27 @@ app.use(limiter);
 // =====================================
 // MONGODB CONNECTION
 // =====================================
-mongoose.connect(process.env.MONGODB_URI)
+mongoose.connect(
+  process.env.MONGODB_URI,
+  {
+    useNewUrlParser: true,
+    useUnifiedTopology: true
+  }
+)
 
 .then(() => {
+
   console.log("✅ MongoDB connected");
+
 })
 
 .catch((err) => {
-  console.log("❌ MongoDB connection error:", err);
+
+  console.log(
+    "❌ MongoDB connection error:",
+    err
+  );
+
 });
 
 // =====================================
@@ -93,6 +109,11 @@ const UserSchema = new mongoose.Schema({
   password: {
     type: String,
     required: true
+  },
+
+  createdAt: {
+    type: Date,
+    default: Date.now
   }
 
 });
@@ -286,6 +307,15 @@ function verifyToken(req, res, next) {
   const token =
     authHeader.split(" ")[1];
 
+  if (!token) {
+
+    return res.status(401).json({
+      success: false,
+      error: "Invalid token format"
+    });
+
+  }
+
   try {
 
     const decoded = jwt.verify(
@@ -301,7 +331,7 @@ function verifyToken(req, res, next) {
 
     return res.status(403).json({
       success: false,
-      error: "Invalid token"
+      error: "Invalid or expired token"
     });
 
   }
@@ -385,12 +415,16 @@ app.get("/status", async (req, res) => {
 
       status: "ONLINE",
 
+      database: "CONNECTED",
+
       stats: {
+
         users: userCount,
         incidents: incidentCount,
         contacts: contactCount,
         evidence: evidenceCount,
         locations: locationCount
+
       },
 
       timestamp: new Date()
@@ -424,7 +458,7 @@ app.post("/register", async (req, res) => {
 
       return res.status(400).json({
         success: false,
-        error: "Missing fields"
+        error: "Missing email or password"
       });
 
     }
@@ -506,22 +540,27 @@ app.post("/login", async (req, res) => {
 
     }
 
-    const token = jwt.sign({
+    const token = jwt.sign(
 
-      userId: user._id,
-      email: user.email
+      {
+        userId: user._id,
+        email: user.email
+      },
 
-    },
+      process.env.JWT_SECRET,
 
-    process.env.JWT_SECRET,
+      {
+        expiresIn: "7d"
+      }
 
-    {
-      expiresIn: "7d"
-    });
+    );
 
     return res.json({
+
       success: true,
+      message: "Login successful",
       token
+
     });
 
   } catch (err) {
@@ -584,15 +623,26 @@ app.post("/add-contact", async (req, res) => {
 // =====================================
 app.get("/contacts/:email", async (req, res) => {
 
-  const contacts =
-    await Contact.find({
-      userEmail: req.params.email
+  try {
+
+    const contacts =
+      await Contact.find({
+        userEmail: req.params.email
+      });
+
+    return res.json({
+      success: true,
+      contacts
     });
 
-  return res.json({
-    success: true,
-    contacts
-  });
+  } catch (err) {
+
+    return res.status(500).json({
+      success: false,
+      error: "Failed to fetch contacts"
+    });
+
+  }
 
 });
 
@@ -622,51 +672,7 @@ app.post("/update-location", async (req, res) => {
 
     return res.status(500).json({
       success: false,
-      error: "Location update failed"
-    });
-
-  }
-
-});
-
-// =====================================
-// GET LAST LOCATION
-// =====================================
-app.get("/last-location/:email", async (req, res) => {
-
-  try {
-
-    const location =
-      await Location.findOne({
-
-        userEmail:
-          req.params.email
-
-      }).sort({
-
-        timestamp: -1
-
-      });
-
-    if (!location) {
-
-      return res.status(404).json({
-        success: false,
-        error: "No location found"
-      });
-
-    }
-
-    return res.json({
-      success: true,
-      location
-    });
-
-  } catch (err) {
-
-    return res.status(500).json({
-      success: false,
-      error: "Failed to fetch location"
+      error: "Failed to update location"
     });
 
   }
@@ -678,27 +684,38 @@ app.get("/last-location/:email", async (req, res) => {
 // =====================================
 app.post("/create-incident", async (req, res) => {
 
-  const incident =
-    new Incident({
+  try {
 
-      incidentId:
-        "GX-" + Date.now(),
+    const incident =
+      new Incident({
 
-      ...req.body
+        incidentId:
+          "GX-" + Date.now(),
 
+        ...req.body
+
+      });
+
+    await incident.save();
+
+    io.emit(
+      "new_incident",
+      incident
+    );
+
+    return res.json({
+      success: true,
+      incident
     });
 
-  await incident.save();
+  } catch (err) {
 
-  io.emit(
-    "new_incident",
-    incident
-  );
+    return res.status(500).json({
+      success: false,
+      error: "Failed to create incident"
+    });
 
-  return res.json({
-    success: true,
-    incident
-  });
+  }
 
 });
 
@@ -707,14 +724,25 @@ app.post("/create-incident", async (req, res) => {
 // =====================================
 app.get("/incidents", async (req, res) => {
 
-  const incidents =
-    await Incident.find()
-    .sort({ createdAt: -1 });
+  try {
 
-  return res.json({
-    success: true,
-    incidents
-  });
+    const incidents =
+      await Incident.find()
+      .sort({ createdAt: -1 });
+
+    return res.json({
+      success: true,
+      incidents
+    });
+
+  } catch (err) {
+
+    return res.status(500).json({
+      success: false,
+      error: "Failed to fetch incidents"
+    });
+
+  }
 
 });
 
@@ -848,7 +876,7 @@ app.post("/upload-evidence", async (req, res) => {
 
     return res.status(500).json({
       success: false,
-      error: "Evidence upload failed"
+      error: "Failed to upload evidence"
     });
 
   }
@@ -894,8 +922,10 @@ ${location}`,
     }
 
     return res.json({
+
       success: true,
       contactsAlerted: contacts.length
+
     });
 
   } catch (err) {
@@ -906,6 +936,39 @@ ${location}`,
     });
 
   }
+
+});
+
+// =====================================
+// 404 ROUTE HANDLER
+// =====================================
+app.use((req, res) => {
+
+  return res.status(404).json({
+
+    success: false,
+    error: "Route not found"
+
+  });
+
+});
+
+// =====================================
+// GLOBAL ERROR HANDLER
+// =====================================
+app.use((err, req, res, next) => {
+
+  console.error(
+    "❌ Server Error:",
+    err
+  );
+
+  return res.status(500).json({
+
+    success: false,
+    error: "Internal server error"
+
+  });
 
 });
 
