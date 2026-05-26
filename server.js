@@ -746,6 +746,367 @@ app.get(
 );
 
 // =====================================
+// ADD CONTACT
+// =====================================
+app.post("/add-contact", async (req, res) => {
+
+  try {
+
+    const {
+      userEmail,
+      name,
+      phone,
+      relationship
+    } = req.body;
+
+    if (
+      !userEmail ||
+      !name ||
+      !phone
+    ) {
+
+      return res.status(400).json({
+
+        success: false,
+        error: "Missing required contact fields"
+
+      });
+
+    }
+
+    const contact = new Contact({
+
+      userEmail,
+      name,
+      phone,
+      relationship
+
+    });
+
+    await contact.save();
+
+    return res.json({
+
+      success: true,
+      contact
+
+    });
+
+  } catch (err) {
+
+    return res.status(500).json({
+
+      success: false,
+      error: "Failed to add contact"
+
+    });
+
+  }
+
+});
+
+// =====================================
+// GET CONTACTS
+// =====================================
+app.get("/contacts/:email", async (req, res) => {
+
+  try {
+
+    const contacts =
+      await Contact.find({
+
+        userEmail: req.params.email
+
+      });
+
+    return res.json({
+
+      success: true,
+      contacts
+
+    });
+
+  } catch (err) {
+
+    return res.status(500).json({
+
+      success: false,
+      error: "Failed to fetch contacts"
+
+    });
+
+  }
+
+});
+
+// =====================================
+// UPDATE LOCATION
+// =====================================
+app.post("/update-location", async (req, res) => {
+
+  try {
+
+    const location =
+      new Location(req.body);
+
+    await location.save();
+
+    io.emit(
+      "live_location",
+      location
+    );
+
+    return res.json({
+
+      success: true,
+      location
+
+    });
+
+  } catch (err) {
+
+    return res.status(500).json({
+
+      success: false,
+      error: "Failed to update location"
+
+    });
+
+  }
+
+});
+
+// =====================================
+// CREATE INCIDENT
+// =====================================
+app.post("/create-incident", async (req, res) => {
+
+  try {
+
+    const incident =
+      new Incident({
+
+        incidentId:
+          "GX-" + Date.now(),
+
+        ...req.body
+
+      });
+
+    await incident.save();
+
+    io.emit(
+      "new_incident",
+      incident
+    );
+
+    return res.json({
+
+      success: true,
+      incident
+
+    });
+
+  } catch (err) {
+
+    return res.status(500).json({
+
+      success: false,
+      error: "Failed to create incident"
+
+    });
+
+  }
+
+});
+
+// =====================================
+// GET INCIDENTS
+// =====================================
+app.get("/incidents", async (req, res) => {
+
+  try {
+
+    const incidents =
+      await Incident.find()
+      .sort({
+        createdAt: -1
+      });
+
+    return res.json({
+
+      success: true,
+      incidents
+
+    });
+
+  } catch (err) {
+
+    return res.status(500).json({
+
+      success: false,
+      error: "Failed to fetch incidents"
+
+    });
+
+  }
+
+});
+
+// =====================================
+// RESOLVE INCIDENT
+// =====================================
+app.put(
+  "/resolve-incident/:id",
+  verifyAdmin,
+  async (req, res) => {
+
+    try {
+
+      const updatedIncident =
+        await Incident.findByIdAndUpdate(
+
+          req.params.id,
+
+          {
+            status: "RESOLVED"
+          },
+
+          {
+            new: true
+          }
+
+        );
+
+      return res.json({
+
+        success: true,
+        incident: updatedIncident
+
+      });
+
+    } catch (err) {
+
+      return res.status(500).json({
+
+        success: false,
+        error: "Failed to resolve incident"
+
+      });
+
+    }
+
+  }
+);
+
+// =====================================
+// DELETE INCIDENT
+// =====================================
+app.delete(
+  "/delete-incident/:id",
+  verifyAdmin,
+  async (req, res) => {
+
+    try {
+
+      await Incident.findByIdAndDelete(
+        req.params.id
+      );
+
+      return res.json({
+
+        success: true,
+        message: "Incident deleted"
+
+      });
+
+    } catch (err) {
+
+      return res.status(500).json({
+
+        success: false,
+        error: "Failed to delete incident"
+
+      });
+
+    }
+
+  }
+);
+
+// =====================================
+// GET ALL USERS
+// =====================================
+app.get(
+  "/admin/users",
+  verifyAdmin,
+  async (req, res) => {
+
+    try {
+
+      const users =
+        await User.find()
+        .select("-password");
+
+      return res.json({
+
+        success: true,
+        users
+
+      });
+
+    } catch (err) {
+
+      return res.status(500).json({
+
+        success: false,
+        error: "Failed to fetch users"
+
+      });
+
+    }
+
+  }
+);
+
+// =====================================
+// UPLOAD EVIDENCE
+// =====================================
+app.post("/upload-evidence", async (req, res) => {
+
+  try {
+
+    const evidence =
+      new Evidence(req.body);
+
+    await evidence.save();
+
+    io.emit(
+      "new_evidence",
+      evidence
+    );
+
+    return res.json({
+
+      success: true,
+      evidence
+
+    });
+
+  } catch (err) {
+
+    return res.status(500).json({
+
+      success: false,
+      error: "Failed to upload evidence"
+
+    });
+
+  }
+
+});
+
+// =====================================
 // SOS ROUTE
 // =====================================
 app.post("/sos", async (req, res) => {
