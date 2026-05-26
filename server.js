@@ -52,14 +52,14 @@ app.use(express.urlencoded({
 }));
 
 // =====================================
-// API RATE LIMITER
+// RATE LIMITER
 // =====================================
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 100,
   message: {
     success: false,
-    error: "Too many requests. Please try again later."
+    error: "Too many requests"
   }
 });
 
@@ -277,21 +277,14 @@ function verifyToken(req, res, next) {
   if (!authHeader) {
 
     return res.status(401).json({
-      message: "No token provided"
+      success: false,
+      error: "No token provided"
     });
 
   }
 
   const token =
     authHeader.split(" ")[1];
-
-  if (!token) {
-
-    return res.status(401).json({
-      message: "Invalid token format"
-    });
-
-  }
 
   try {
 
@@ -307,7 +300,8 @@ function verifyToken(req, res, next) {
   } catch (err) {
 
     return res.status(403).json({
-      message: "Invalid or expired token"
+      success: false,
+      error: "Invalid token"
     });
 
   }
@@ -391,16 +385,12 @@ app.get("/status", async (req, res) => {
 
       status: "ONLINE",
 
-      database: "CONNECTED",
-
       stats: {
-
         users: userCount,
         incidents: incidentCount,
         contacts: contactCount,
         evidence: evidenceCount,
         locations: locationCount
-
       },
 
       timestamp: new Date()
@@ -433,7 +423,8 @@ app.post("/register", async (req, res) => {
     if (!email || !password) {
 
       return res.status(400).json({
-        error: "Missing email or password"
+        success: false,
+        error: "Missing fields"
       });
 
     }
@@ -444,6 +435,7 @@ app.post("/register", async (req, res) => {
     if (existingUser) {
 
       return res.status(400).json({
+        success: false,
         error: "User already exists"
       });
 
@@ -467,6 +459,7 @@ app.post("/register", async (req, res) => {
   } catch (err) {
 
     return res.status(500).json({
+      success: false,
       error: "Registration failed"
     });
 
@@ -492,6 +485,7 @@ app.post("/login", async (req, res) => {
     if (!user) {
 
       return res.status(401).json({
+        success: false,
         error: "User not found"
       });
 
@@ -506,6 +500,7 @@ app.post("/login", async (req, res) => {
     if (!validPassword) {
 
       return res.status(401).json({
+        success: false,
         error: "Invalid password"
       });
 
@@ -525,16 +520,14 @@ app.post("/login", async (req, res) => {
     });
 
     return res.json({
-
       success: true,
-      message: "Login successful",
       token
-
     });
 
   } catch (err) {
 
     return res.status(500).json({
+      success: false,
       error: "Login failed"
     });
 
@@ -578,6 +571,7 @@ app.post("/add-contact", async (req, res) => {
   } catch (err) {
 
     return res.status(500).json({
+      success: false,
       error: "Failed to add contact"
     });
 
@@ -607,20 +601,75 @@ app.get("/contacts/:email", async (req, res) => {
 // =====================================
 app.post("/update-location", async (req, res) => {
 
-  const location =
-    new Location(req.body);
+  try {
 
-  await location.save();
+    const location =
+      new Location(req.body);
 
-  io.emit(
-    "live_location",
-    location
-  );
+    await location.save();
 
-  return res.json({
-    success: true,
-    location
-  });
+    io.emit(
+      "live_location",
+      location
+    );
+
+    return res.json({
+      success: true,
+      location
+    });
+
+  } catch (err) {
+
+    return res.status(500).json({
+      success: false,
+      error: "Location update failed"
+    });
+
+  }
+
+});
+
+// =====================================
+// GET LAST LOCATION
+// =====================================
+app.get("/last-location/:email", async (req, res) => {
+
+  try {
+
+    const location =
+      await Location.findOne({
+
+        userEmail:
+          req.params.email
+
+      }).sort({
+
+        timestamp: -1
+
+      });
+
+    if (!location) {
+
+      return res.status(404).json({
+        success: false,
+        error: "No location found"
+      });
+
+    }
+
+    return res.json({
+      success: true,
+      location
+    });
+
+  } catch (err) {
+
+    return res.status(500).json({
+      success: false,
+      error: "Failed to fetch location"
+    });
+
+  }
 
 });
 
@@ -702,6 +751,7 @@ app.put(
     } catch (err) {
 
       return res.status(500).json({
+        success: false,
         error: "Failed to resolve incident"
       });
 
@@ -732,6 +782,7 @@ app.delete(
     } catch (err) {
 
       return res.status(500).json({
+        success: false,
         error: "Failed to delete incident"
       });
 
@@ -762,6 +813,7 @@ app.get(
     } catch (err) {
 
       return res.status(500).json({
+        success: false,
         error: "Failed to fetch users"
       });
 
@@ -775,20 +827,31 @@ app.get(
 // =====================================
 app.post("/upload-evidence", async (req, res) => {
 
-  const evidence =
-    new Evidence(req.body);
+  try {
 
-  await evidence.save();
+    const evidence =
+      new Evidence(req.body);
 
-  io.emit(
-    "new_evidence",
-    evidence
-  );
+    await evidence.save();
 
-  return res.json({
-    success: true,
-    evidence
-  });
+    io.emit(
+      "new_evidence",
+      evidence
+    );
+
+    return res.json({
+      success: true,
+      evidence
+    });
+
+  } catch (err) {
+
+    return res.status(500).json({
+      success: false,
+      error: "Evidence upload failed"
+    });
+
+  }
 
 });
 
@@ -831,15 +894,14 @@ ${location}`,
     }
 
     return res.json({
-
       success: true,
       contactsAlerted: contacts.length
-
     });
 
   } catch (err) {
 
     return res.status(500).json({
+      success: false,
       error: "SOS failed"
     });
 
