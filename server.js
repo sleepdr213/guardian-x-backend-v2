@@ -19,14 +19,37 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 // =====================================
+// REQUIRED ENVIRONMENT VARIABLES
+// =====================================
+if (
+  !process.env.JWT_SECRET ||
+  !process.env.MONGODB_URI
+) {
+  console.error(
+    "❌ Missing environment variables"
+  );
+
+  process.exit(1);
+}
+
+// =====================================
 // HTTP SERVER + SOCKET.IO
 // =====================================
 const server = http.createServer(app);
 
 const io = new Server(server, {
   cors: {
-    origin: "*",
-    methods: ["GET", "POST", "PUT", "DELETE"]
+    origin:
+      process.env.CLIENT_URL || "*",
+
+    methods: [
+      "GET",
+      "POST",
+      "PUT",
+      "DELETE"
+    ],
+
+    credentials: true
   }
 });
 
@@ -44,8 +67,17 @@ const client = twilio(
 app.use(helmet());
 
 app.use(cors({
-  origin: "*",
-  methods: ["GET", "POST", "PUT", "DELETE"]
+  origin:
+    process.env.CLIENT_URL || "*",
+
+  methods: [
+    "GET",
+    "POST",
+    "PUT",
+    "DELETE"
+  ],
+
+  credentials: true
 }));
 
 app.use(express.json());
@@ -58,12 +90,18 @@ app.use(express.urlencoded({
 // API RATE LIMITER
 // =====================================
 const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
+
+  windowMs:
+    15 * 60 * 1000,
+
   max: 100,
+
   message: {
     success: false,
-    error: "Too many requests. Please try again later."
+    error:
+      "Too many requests. Please try again later."
   }
+
 });
 
 app.use(limiter);
@@ -71,13 +109,19 @@ app.use(limiter);
 // =====================================
 // MONGODB CONNECTION
 // =====================================
-mongoose.connect(process.env.MONGODB_URI, {
-  serverSelectionTimeoutMS: 5000
-})
+mongoose.connect(
+  process.env.MONGODB_URI,
+  {
+    serverSelectionTimeoutMS: 5000,
+    socketTimeoutMS: 45000
+  }
+)
 
 .then(() => {
 
-  console.log("✅ MongoDB connected");
+  console.log(
+    "✅ MongoDB connected"
+  );
 
 })
 
@@ -286,7 +330,11 @@ const Evidence = mongoose.model(
 // =====================================
 // JWT VERIFY MIDDLEWARE
 // =====================================
-function verifyToken(req, res, next) {
+function verifyToken(
+  req,
+  res,
+  next
+) {
 
   const authHeader =
     req.headers["authorization"];
@@ -307,7 +355,8 @@ function verifyToken(req, res, next) {
 
     return res.status(401).json({
       success: false,
-      error: "Invalid token format"
+      error:
+        "Invalid token format"
     });
 
   }
@@ -327,7 +376,8 @@ function verifyToken(req, res, next) {
 
     return res.status(403).json({
       success: false,
-      error: "Invalid or expired token"
+      error:
+        "Invalid or expired token"
     });
 
   }
@@ -337,7 +387,11 @@ function verifyToken(req, res, next) {
 // =====================================
 // ADMIN VERIFY MIDDLEWARE
 // =====================================
-function verifyAdmin(req, res, next) {
+function verifyAdmin(
+  req,
+  res,
+  next
+) {
 
   const adminSecret =
     req.headers["x-admin-secret"];
@@ -349,7 +403,8 @@ function verifyAdmin(req, res, next) {
 
     return res.status(403).json({
       success: false,
-      error: "Unauthorized admin access"
+      error:
+        "Unauthorized admin access"
     });
 
   }
@@ -376,7 +431,8 @@ app.get("/health", (req, res) => {
 
   return res.json({
     success: true,
-    message: "Guardian X API Healthy"
+    message:
+      "Guardian X API Healthy"
   });
 
 });
@@ -384,200 +440,235 @@ app.get("/health", (req, res) => {
 // =====================================
 // STATUS ROUTE
 // =====================================
-app.get("/status", async (req, res) => {
+app.get(
+  "/status",
+  async (req, res) => {
 
-  try {
+    try {
 
-    const userCount =
-      await User.countDocuments();
+      const userCount =
+        await User.countDocuments();
 
-    const incidentCount =
-      await Incident.countDocuments();
+      const incidentCount =
+        await Incident.countDocuments();
 
-    const contactCount =
-      await Contact.countDocuments();
+      const contactCount =
+        await Contact.countDocuments();
 
-    const evidenceCount =
-      await Evidence.countDocuments();
+      const evidenceCount =
+        await Evidence.countDocuments();
 
-    const locationCount =
-      await Location.countDocuments();
+      const locationCount =
+        await Location.countDocuments();
 
-    return res.json({
+      return res.json({
 
-      success: true,
+        success: true,
 
-      system: "Guardian X",
+        system: "Guardian X",
 
-      status: "ONLINE",
+        status: "ONLINE",
 
-      database: "CONNECTED",
+        database: "CONNECTED",
 
-      stats: {
+        stats: {
 
-        users: userCount,
-        incidents: incidentCount,
-        contacts: contactCount,
-        evidence: evidenceCount,
-        locations: locationCount
+          users: userCount,
+          incidents: incidentCount,
+          contacts: contactCount,
+          evidence: evidenceCount,
+          locations: locationCount
 
-      },
+        },
 
-      timestamp: new Date()
+        timestamp:
+          new Date()
 
-    });
+      });
 
-  } catch (err) {
+    } catch (err) {
 
-    return res.status(500).json({
-      success: false,
-      error: err.message
-    });
+      return res.status(500).json({
+        success: false,
+        error: err.message
+      });
+
+    }
 
   }
-
-});
+);
 
 // =====================================
 // REGISTER ROUTE
 // =====================================
-app.post("/register", async (req, res) => {
+app.post(
+  "/register",
+  async (req, res) => {
 
-  try {
+    try {
 
-    const {
-      email,
-      password
-    } = req.body;
+      const {
+        email,
+        password
+      } = req.body;
 
-    if (!email || !password) {
+      if (
+        !email ||
+        !password
+      ) {
 
-      return res.status(400).json({
+        return res.status(400).json({
+          success: false,
+          error:
+            "Missing email or password"
+        });
+
+      }
+
+      const existingUser =
+        await User.findOne({
+          email
+        });
+
+      if (existingUser) {
+
+        return res.status(400).json({
+          success: false,
+          error:
+            "User already exists"
+        });
+
+      }
+
+      const hashedPassword =
+        await bcrypt.hash(
+          password,
+          10
+        );
+
+      const newUser =
+        new User({
+          email,
+          password:
+            hashedPassword
+        });
+
+      await newUser.save();
+
+      return res.json({
+        success: true,
+        message:
+          "User registered successfully"
+      });
+
+    } catch (err) {
+
+      return res.status(500).json({
         success: false,
-        error: "Missing email or password"
+        error:
+          "Registration failed"
       });
 
     }
-
-    const existingUser =
-      await User.findOne({ email });
-
-    if (existingUser) {
-
-      return res.status(400).json({
-        success: false,
-        error: "User already exists"
-      });
-
-    }
-
-    const hashedPassword =
-      await bcrypt.hash(password, 10);
-
-    const newUser = new User({
-      email,
-      password: hashedPassword
-    });
-
-    await newUser.save();
-
-    return res.json({
-      success: true,
-      message: "User registered successfully"
-    });
-
-  } catch (err) {
-
-    return res.status(500).json({
-      success: false,
-      error: "Registration failed"
-    });
 
   }
-
-});
+);
 
 // =====================================
 // LOGIN ROUTE
 // =====================================
-app.post("/login", async (req, res) => {
+app.post(
+  "/login",
+  async (req, res) => {
 
-  try {
+    try {
 
-    const {
-      email,
-      password
-    } = req.body;
+      const {
+        email,
+        password
+      } = req.body;
 
-    if (!email || !password) {
+      if (
+        !email ||
+        !password
+      ) {
 
-      return res.status(400).json({
-        success: false,
-        error: "Missing email or password"
-      });
+        return res.status(400).json({
+          success: false,
+          error:
+            "Missing email or password"
+        });
 
-    }
-
-    const user =
-      await User.findOne({ email });
-
-    if (!user) {
-
-      return res.status(401).json({
-        success: false,
-        error: "User not found"
-      });
-
-    }
-
-    const validPassword =
-      await bcrypt.compare(
-        password,
-        user.password
-      );
-
-    if (!validPassword) {
-
-      return res.status(401).json({
-        success: false,
-        error: "Invalid password"
-      });
-
-    }
-
-    const token = jwt.sign(
-
-      {
-        userId: user._id,
-        email: user.email
-      },
-
-      process.env.JWT_SECRET,
-
-      {
-        expiresIn: "7d"
       }
 
-    );
+      const user =
+        await User.findOne({
+          email
+        });
 
-    return res.json({
+      if (!user) {
 
-      success: true,
-      message: "Login successful",
-      token
+        return res.status(401).json({
+          success: false,
+          error:
+            "User not found"
+        });
 
-    });
+      }
 
-  } catch (err) {
+      const validPassword =
+        await bcrypt.compare(
+          password,
+          user.password
+        );
 
-    return res.status(500).json({
-      success: false,
-      error: "Login failed"
-    });
+      if (!validPassword) {
+
+        return res.status(401).json({
+          success: false,
+          error:
+            "Invalid password"
+        });
+
+      }
+
+      const token = jwt.sign(
+
+        {
+          userId: user._id,
+          email: user.email
+        },
+
+        process.env.JWT_SECRET,
+
+        {
+          expiresIn: "7d"
+        }
+
+      );
+
+      return res.json({
+
+        success: true,
+        message:
+          "Login successful",
+
+        token
+
+      });
+
+    } catch (err) {
+
+      return res.status(500).json({
+        success: false,
+        error:
+          "Login failed"
+      });
+
+    }
 
   }
-
-});
+);
 
 // =====================================
 // PROFILE ROUTE
@@ -598,178 +689,211 @@ app.get(
 // =====================================
 // ADD CONTACT
 // =====================================
-app.post("/add-contact", async (req, res) => {
+app.post(
+  "/add-contact",
+  async (req, res) => {
 
-  try {
+    try {
 
-    const {
-      userEmail,
-      name,
-      phone,
-      relationship
-    } = req.body;
+      const {
+        userEmail,
+        name,
+        phone,
+        relationship
+      } = req.body;
 
-    if (!userEmail || !name || !phone) {
+      if (
+        !userEmail ||
+        !name ||
+        !phone
+      ) {
 
-      return res.status(400).json({
+        return res.status(400).json({
+          success: false,
+          error:
+            "Missing required contact fields"
+        });
+
+      }
+
+      const contact =
+        new Contact({
+
+          userEmail,
+          name,
+          phone,
+          relationship
+
+        });
+
+      await contact.save();
+
+      return res.json({
+        success: true,
+        contact
+      });
+
+    } catch (err) {
+
+      return res.status(500).json({
         success: false,
-        error: "Missing required contact fields"
+        error:
+          "Failed to add contact"
       });
 
     }
 
-    const contact = new Contact({
-      userEmail,
-      name,
-      phone,
-      relationship
-    });
-
-    await contact.save();
-
-    return res.json({
-      success: true,
-      contact
-    });
-
-  } catch (err) {
-
-    return res.status(500).json({
-      success: false,
-      error: "Failed to add contact"
-    });
-
   }
-
-});
+);
 
 // =====================================
 // GET CONTACTS
 // =====================================
-app.get("/contacts/:email", async (req, res) => {
+app.get(
+  "/contacts/:email",
+  async (req, res) => {
 
-  try {
+    try {
 
-    const contacts =
-      await Contact.find({
-        userEmail: req.params.email
+      const contacts =
+        await Contact.find({
+
+          userEmail:
+            req.params.email
+
+        });
+
+      return res.json({
+        success: true,
+        contacts
       });
 
-    return res.json({
-      success: true,
-      contacts
-    });
+    } catch (err) {
 
-  } catch (err) {
+      return res.status(500).json({
+        success: false,
+        error:
+          "Failed to fetch contacts"
+      });
 
-    return res.status(500).json({
-      success: false,
-      error: "Failed to fetch contacts"
-    });
+    }
 
   }
-
-});
+);
 
 // =====================================
 // UPDATE LOCATION
 // =====================================
-app.post("/update-location", async (req, res) => {
+app.post(
+  "/update-location",
+  async (req, res) => {
 
-  try {
+    try {
 
-    const location =
-      new Location(req.body);
+      const location =
+        new Location(req.body);
 
-    await location.save();
+      await location.save();
 
-    io.emit(
-      "live_location",
-      location
-    );
+      io.emit(
+        "live_location",
+        location
+      );
 
-    return res.json({
-      success: true,
-      location
-    });
+      return res.json({
+        success: true,
+        location
+      });
 
-  } catch (err) {
+    } catch (err) {
 
-    return res.status(500).json({
-      success: false,
-      error: "Failed to update location"
-    });
+      return res.status(500).json({
+        success: false,
+        error:
+          "Failed to update location"
+      });
+
+    }
 
   }
-
-});
+);
 
 // =====================================
 // CREATE INCIDENT
 // =====================================
-app.post("/create-incident", async (req, res) => {
+app.post(
+  "/create-incident",
+  async (req, res) => {
 
-  try {
+    try {
 
-    const incident =
-      new Incident({
+      const incident =
+        new Incident({
 
-        incidentId:
-          "GX-" + Date.now(),
+          incidentId:
+            "GX-" + Date.now(),
 
-        ...req.body
+          ...req.body
 
+        });
+
+      await incident.save();
+
+      io.emit(
+        "new_incident",
+        incident
+      );
+
+      return res.json({
+        success: true,
+        incident
       });
 
-    await incident.save();
+    } catch (err) {
 
-    io.emit(
-      "new_incident",
-      incident
-    );
+      return res.status(500).json({
+        success: false,
+        error:
+          "Failed to create incident"
+      });
 
-    return res.json({
-      success: true,
-      incident
-    });
-
-  } catch (err) {
-
-    return res.status(500).json({
-      success: false,
-      error: "Failed to create incident"
-    });
+    }
 
   }
-
-});
+);
 
 // =====================================
 // GET INCIDENTS
 // =====================================
-app.get("/incidents", async (req, res) => {
+app.get(
+  "/incidents",
+  async (req, res) => {
 
-  try {
+    try {
 
-    const incidents =
-      await Incident.find()
-      .sort({ createdAt: -1 });
+      const incidents =
+        await Incident.find()
+        .sort({
+          createdAt: -1
+        });
 
-    return res.json({
-      success: true,
-      incidents
-    });
+      return res.json({
+        success: true,
+        incidents
+      });
 
-  } catch (err) {
+    } catch (err) {
 
-    return res.status(500).json({
-      success: false,
-      error: "Failed to fetch incidents"
-    });
+      return res.status(500).json({
+        success: false,
+        error:
+          "Failed to fetch incidents"
+      });
+
+    }
 
   }
-
-});
+);
 
 // =====================================
 // RESOLVE INCIDENT
@@ -798,14 +922,16 @@ app.put(
 
       return res.json({
         success: true,
-        incident: updatedIncident
+        incident:
+          updatedIncident
       });
 
     } catch (err) {
 
       return res.status(500).json({
         success: false,
-        error: "Failed to resolve incident"
+        error:
+          "Failed to resolve incident"
       });
 
     }
@@ -829,14 +955,16 @@ app.delete(
 
       return res.json({
         success: true,
-        message: "Incident deleted"
+        message:
+          "Incident deleted"
       });
 
     } catch (err) {
 
       return res.status(500).json({
         success: false,
-        error: "Failed to delete incident"
+        error:
+          "Failed to delete incident"
       });
 
     }
@@ -867,7 +995,8 @@ app.get(
 
       return res.status(500).json({
         success: false,
-        error: "Failed to fetch users"
+        error:
+          "Failed to fetch users"
       });
 
     }
@@ -878,67 +1007,77 @@ app.get(
 // =====================================
 // UPLOAD EVIDENCE
 // =====================================
-app.post("/upload-evidence", async (req, res) => {
+app.post(
+  "/upload-evidence",
+  async (req, res) => {
 
-  try {
+    try {
 
-    const evidence =
-      new Evidence(req.body);
+      const evidence =
+        new Evidence(req.body);
 
-    await evidence.save();
+      await evidence.save();
 
-    io.emit(
-      "new_evidence",
-      evidence
-    );
+      io.emit(
+        "new_evidence",
+        evidence
+      );
 
-    return res.json({
-      success: true,
-      evidence
-    });
+      return res.json({
+        success: true,
+        evidence
+      });
 
-  } catch (err) {
+    } catch (err) {
 
-    return res.status(500).json({
-      success: false,
-      error: "Failed to upload evidence"
-    });
-
-  }
-
-});
-
-// =====================================
-// SOS ROUTE
-// =====================================
-app.post("/sos", async (req, res) => {
-
-  try {
-
-    const {
-      email,
-      location
-    } = req.body;
-
-    if (!email || !location) {
-
-      return res.status(400).json({
+      return res.status(500).json({
         success: false,
-        error: "Missing email or location"
+        error:
+          "Failed to upload evidence"
       });
 
     }
 
-    const contacts =
-      await Contact.find({
-        userEmail: email
-      });
+  }
+);
 
-    for (const contact of contacts) {
+// =====================================
+// SOS ROUTE
+// =====================================
+app.post(
+  "/sos",
+  async (req, res) => {
 
-      await client.messages.create({
+    try {
 
-        body:
+      const {
+        email,
+        location
+      } = req.body;
+
+      if (
+        !email ||
+        !location
+      ) {
+
+        return res.status(400).json({
+          success: false,
+          error:
+            "Missing email or location"
+        });
+
+      }
+
+      const contacts =
+        await Contact.find({
+          userEmail: email
+        });
+
+      for (const contact of contacts) {
+
+        await client.messages.create({
+
+          body:
 `🚨 GUARDIAN X SOS ALERT
 
 ${email} triggered an emergency alert.
@@ -946,32 +1085,35 @@ ${email} triggered an emergency alert.
 📍 Location:
 ${location}`,
 
-        from:
-          process.env.TWILIO_PHONE_NUMBER,
+          from:
+            process.env.TWILIO_PHONE_NUMBER,
 
-        to: contact.phone
+          to:
+            contact.phone
 
+        });
+
+      }
+
+      return res.json({
+
+        success: true,
+        contactsAlerted:
+          contacts.length
+
+      });
+
+    } catch (err) {
+
+      return res.status(500).json({
+        success: false,
+        error: "SOS failed"
       });
 
     }
 
-    return res.json({
-
-      success: true,
-      contactsAlerted: contacts.length
-
-    });
-
-  } catch (err) {
-
-    return res.status(500).json({
-      success: false,
-      error: "SOS failed"
-    });
-
   }
-
-});
+);
 
 // =====================================
 // 404 ROUTE HANDLER
@@ -990,7 +1132,12 @@ app.use((req, res) => {
 // =====================================
 // GLOBAL ERROR HANDLER
 // =====================================
-app.use((err, req, res, next) => {
+app.use((
+  err,
+  req,
+  res,
+  next
+) => {
 
   console.error(
     "❌ Server Error:",
@@ -1000,7 +1147,8 @@ app.use((err, req, res, next) => {
   return res.status(500).json({
 
     success: false,
-    error: "Internal server error"
+    error:
+      "Internal server error"
 
   });
 
@@ -1009,23 +1157,29 @@ app.use((err, req, res, next) => {
 // =====================================
 // SOCKET CONNECTION
 // =====================================
-io.on("connection", (socket) => {
-
-  console.log(
-    "🔌 Client connected:",
-    socket.id
-  );
-
-  socket.on("disconnect", () => {
+io.on(
+  "connection",
+  (socket) => {
 
     console.log(
-      "❌ Client disconnected:",
+      "🔌 Client connected:",
       socket.id
     );
 
-  });
+    socket.on(
+      "disconnect",
+      () => {
 
-});
+        console.log(
+          "❌ Client disconnected:",
+          socket.id
+        );
+
+      }
+    );
+
+  }
+);
 
 // =====================================
 // START SERVER
@@ -1033,7 +1187,34 @@ io.on("connection", (socket) => {
 server.listen(PORT, () => {
 
   console.log(
-    `🚀 Guardian backend running on port ${PORT}`
+    `🚀 Guardian X backend running on port ${PORT}`
   );
 
 });
+
+// =====================================
+// PROCESS ERROR HANDLERS
+// =====================================
+process.on(
+  "unhandledRejection",
+  (err) => {
+
+    console.error(
+      "❌ Unhandled Rejection:",
+      err
+    );
+
+  }
+);
+
+process.on(
+  "uncaughtException",
+  (err) => {
+
+    console.error(
+      "❌ Uncaught Exception:",
+      err
+    );
+
+  }
+);
