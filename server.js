@@ -840,6 +840,29 @@ app.get("/contacts/:email", async (req, res) => {
 });
 
 // =====================================
+// DELETE CONTACT
+// =====================================
+app.delete("/delete-contact/:id", async (req, res) => {
+  try {
+
+    await Contact.findByIdAndDelete(req.params.id);
+
+    return res.json({
+      success: true,
+      message: "Contact deleted"
+    });
+
+  } catch (err) {
+
+    return res.status(500).json({
+      success: false,
+      error: "Failed to delete contact"
+    });
+
+  }
+});
+
+// =====================================
 // UPDATE LOCATION
 // =====================================
 app.post("/update-location", async (req, res) => {
