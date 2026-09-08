@@ -14,7 +14,7 @@ permissions:
 
 jobs:
   fusion-tests:
-    name: Fusion Engine Tests
+    name: Guardian X Fusion Tests
     runs-on: ubuntu-latest
     timeout-minutes: 5
 
@@ -29,3 +29,6 @@ jobs:
 
       - name: Run Guardian X Fusion Tests
         run: npm run test:fusion
+
+      - name: Run Guardian X Multi-Sensor Fusion Tests
+        run: node fusion/fusionSessionTest.js
