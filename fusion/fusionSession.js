@@ -1,8 +1,29 @@
 "use strict";
 
+/*
+ * Guardian X — Multi-Sensor Fusion Session
+ *
+ * Purpose:
+ *   Allows observations from multiple independently-authorized sensors
+ *   to contribute to one emergency-scoped fusion result.
+ *
+ * Security principles:
+ *   - Every sensor requires its own active authorization.
+ *   - Every observation must reference its authorization.
+ *   - Geographic boundaries are enforced per sensor authorization.
+ *   - Output permissions are enforced per authorization.
+ *   - Active incident required.
+ *   - Fail closed on invalid data.
+ *   - No direct hardware activation.
+ *   - No face recognition.
+ *   - No persistent identity tracking.
+ *   - No unrestricted/background surveillance.
+ */
+
 const crypto = require("crypto");
 
 const {
+  ALLOWED_OUTPUTS,
   isAuthorizationActive,
   isCoordinateWithinAuthorization,
   isOutputAllowed,
@@ -14,36 +35,57 @@ const {
   SENSOR_OBSERVATION_MAP,
 } = require("./fusionEngine");
 
+/* =========================================================
+   SESSION CONFIGURATION
+   ========================================================= */
+
 const SESSION_CONFIG = Object.freeze({
-  version: "1.0.0",
-  maxAuthorizations: 20,
-  maxObservations: 200,
-  maxObservationAgeSeconds: 120,
-  maxFutureObservationSeconds: 30,
-  maxSummaryLength: 500,
+  version: "1.0.1",
+
+  maximumAuthorizations: 20,
+  maximumObservations: 200,
+
+  maximumObservationAgeSeconds: 120,
+  maximumFutureObservationSeconds: 30,
+
+  maximumSummaryLength: 500,
 });
+
+/* =========================================================
+   SESSION STATUS
+   ========================================================= */
 
 const SESSION_STATUS = Object.freeze({
   ACTIVE: "ACTIVE",
   CLOSED: "CLOSED",
 });
 
+/* =========================================================
+   BASIC HELPERS
+   ========================================================= */
+
 function createId(prefix) {
-  return `${prefix}-${crypto.randomUUID()}`;
+  return `${prefix}_${crypto.randomUUID()}`;
 }
 
 function isNonEmptyString(value) {
-  return typeof value === "string" && value.trim().length > 0;
+  return (
+    typeof value === "string" &&
+    value.trim().length > 0
+  );
 }
 
-function isValidNumber(value) {
-  return typeof value === "number" && Number.isFinite(value);
+function isFiniteNumber(value) {
+  return (
+    typeof value === "number" &&
+    Number.isFinite(value)
+  );
 }
 
 function isValidCoordinate(latitude, longitude) {
   return (
-    isValidNumber(latitude) &&
-    isValidNumber(longitude) &&
+    isFiniteNumber(latitude) &&
+    isFiniteNumber(longitude) &&
     latitude >= -90 &&
     latitude <= 90 &&
     longitude >= -180 &&
@@ -61,16 +103,26 @@ function parseDate(value) {
   return date;
 }
 
-function sanitizeSummary(value) {
+function safeText(value) {
   if (!isNonEmptyString(value)) {
     return null;
   }
 
-  return value.trim().slice(0, SESSION_CONFIG.maxSummaryLength);
+  return value
+    .trim()
+    .slice(0, SESSION_CONFIG.maximumSummaryLength);
 }
 
+/* =========================================================
+   SAFE METADATA
+   ========================================================= */
+
 function sanitizeMetadata(metadata) {
-  if (!metadata || typeof metadata !== "object" || Array.isArray(metadata)) {
+  if (
+    !metadata ||
+    typeof metadata !== "object" ||
+    Array.isArray(metadata)
+  ) {
     return {};
   }
 
@@ -85,36 +137,48 @@ function sanitizeMetadata(metadata) {
     "platformId",
   ];
 
-  const sanitized = {};
+  const safe = {};
 
   for (const key of allowedKeys) {
-    if (Object.prototype.hasOwnProperty.call(metadata, key)) {
-      sanitized[key] = metadata[key];
+    if (
+      Object.prototype.hasOwnProperty.call(
+        metadata,
+        key
+      )
+    ) {
+      safe[key] = metadata[key];
     }
   }
 
-  return sanitized;
+  return safe;
 }
 
+/* =========================================================
+   INCIDENT VALIDATION
+   ========================================================= */
+
 function validateIncident(incident) {
-  if (!incident || typeof incident !== "object") {
+  if (
+    !incident ||
+    typeof incident !== "object"
+  ) {
     return {
       valid: false,
-      reason: "Incident is required.",
+      error: "Incident is required.",
     };
   }
 
   if (!isNonEmptyString(incident.incidentId)) {
     return {
       valid: false,
-      reason: "Incident ID is required.",
+      error: "Incident ID is required.",
     };
   }
 
   if (incident.status !== "ACTIVE") {
     return {
       valid: false,
-      reason: "Incident must be ACTIVE.",
+      error: "Incident must be ACTIVE.",
     };
   }
 
@@ -122,69 +186,133 @@ function validateIncident(incident) {
     valid: true,
   };
 }
+
+/* =========================================================
+   AUTHORIZATION SET VALIDATION
+   ========================================================= */
 
 function validateAuthorizationSet({
   incident,
   authorizations,
   now = new Date(),
 }) {
-  const incidentValidation = validateIncident(incident);
+  const incidentValidation =
+    validateIncident(incident);
 
   if (!incidentValidation.valid) {
     return incidentValidation;
   }
 
-  if (!Array.isArray(authorizations) || authorizations.length === 0) {
+  if (
+    !Array.isArray(authorizations) ||
+    authorizations.length === 0
+  ) {
     return {
       valid: false,
-      reason: "At least one sensor authorization is required.",
+      error:
+        "At least one sensor authorization is required.",
     };
   }
 
-  if (authorizations.length > SESSION_CONFIG.maxAuthorizations) {
+  if (
+    authorizations.length >
+    SESSION_CONFIG.maximumAuthorizations
+  ) {
     return {
       valid: false,
-      reason: "Too many sensor authorizations.",
+      error:
+        "Sensor authorization limit exceeded.",
     };
   }
 
   const authorizationIds = new Set();
 
   for (const authorization of authorizations) {
-    if (!authorization || typeof authorization !== "object") {
+    if (
+      !authorization ||
+      typeof authorization !== "object"
+    ) {
       return {
         valid: false,
-        reason: "Invalid sensor authorization.",
+        error: "Invalid sensor authorization.",
       };
     }
 
-    if (!isNonEmptyString(authorization.authorizationId)) {
+    if (
+      !isNonEmptyString(
+        authorization.authorizationId
+      )
+    ) {
       return {
         valid: false,
-        reason: "Authorization ID is required.",
+        error:
+          "Authorization ID is required.",
       };
     }
 
-    if (authorizationIds.has(authorization.authorizationId)) {
+    if (
+      authorizationIds.has(
+        authorization.authorizationId
+      )
+    ) {
       return {
         valid: false,
-        reason: "Duplicate authorization ID.",
+        error:
+          "Duplicate authorization ID.",
       };
     }
 
-    authorizationIds.add(authorization.authorizationId);
+    authorizationIds.add(
+      authorization.authorizationId
+    );
 
-    if (authorization.incidentId !== incident.incidentId) {
+    if (
+      authorization.incidentId !==
+      incident.incidentId
+    ) {
       return {
         valid: false,
-        reason: "Authorization does not belong to this incident.",
+        error:
+          "Authorization does not belong to this incident.",
       };
     }
 
-    if (!isAuthorizationActive(authorization, now)) {
+    if (
+      !isAuthorizationActive(
+        authorization,
+        now
+      )
+    ) {
       return {
         valid: false,
-        reason: "Sensor authorization is not active.",
+        error:
+          "Sensor authorization is not active.",
+      };
+    }
+
+    if (
+      !isNonEmptyString(
+        authorization.sensorType
+      )
+    ) {
+      return {
+        valid: false,
+        error:
+          "Authorization sensor type is required.",
+      };
+    }
+
+    if (
+      !Array.isArray(
+        SENSOR_OBSERVATION_MAP[
+          authorization.sensorType
+        ]
+      )
+    ) {
+      return {
+        valid: false,
+        error:
+          "Authorization sensor type is not supported.",
       };
     }
   }
@@ -193,6 +321,44 @@ function validateAuthorizationSet({
     valid: true,
   };
 }
+
+/* =========================================================
+   SESSION AUDIT HELPER
+   ========================================================= */
+
+function createSessionAuditEvent({
+  action,
+  authorization = null,
+  success,
+  reason = null,
+  sessionId = null,
+  fusionId = null,
+}) {
+  const event = buildAuditEvent(
+    action,
+    authorization,
+    success,
+    reason
+  );
+
+  return {
+    ...event,
+
+    sessionId:
+      isNonEmptyString(sessionId)
+        ? sessionId
+        : null,
+
+    fusionId:
+      isNonEmptyString(fusionId)
+        ? fusionId
+        : null,
+  };
+}
+
+/* =========================================================
+   CREATE FUSION SESSION
+   ========================================================= */
 
 function createFusionSession({
   incident,
@@ -207,61 +373,116 @@ function createFusionSession({
     };
   }
 
-  const validation = validateAuthorizationSet({
-    incident,
-    authorizations,
-    now,
-  });
+  const validation =
+    validateAuthorizationSet({
+      incident,
+      authorizations,
+      now,
+    });
 
   if (!validation.valid) {
     return {
       success: false,
-      error: validation.reason,
+      error: validation.error,
     };
   }
 
-  const session = {
-    sessionId: createId("GX-FUSION"),
-    version: SESSION_CONFIG.version,
-    incidentId: incident.incidentId,
-    status: SESSION_STATUS.ACTIVE,
-    createdBy: createdBy.trim(),
-    createdAt: new Date(now).toISOString(),
-    authorizationIds: authorizations.map(
-      (authorization) => authorization.authorizationId
+  const authorizationIds =
+    authorizations.map(
+      (authorization) =>
+        authorization.authorizationId
+    );
+
+  const sensorTypes = [
+    ...new Set(
+      authorizations.map(
+        (authorization) =>
+          authorization.sensorType
+      )
     ),
-    sensorTypes: [
-      ...new Set(
-        authorizations.map((authorization) => authorization.sensorType)
-      ),
-    ],
+  ];
+
+  const session = {
+    sessionId: createId("GX_FUSION_SESSION"),
+
+    fusionVersion:
+      SESSION_CONFIG.version,
+
+    incidentId:
+      incident.incidentId,
+
+    status:
+      SESSION_STATUS.ACTIVE,
+
+    createdBy:
+      createdBy.trim(),
+
+    createdAt:
+      new Date(now).toISOString(),
+
+    authorizationIds,
+
+    sensorTypes,
+
     privacyControls: {
       emergencyScoped: true,
-      independentSensorAuthorizationRequired: true,
+
+      independentSensorAuthorizationRequired:
+        true,
+
       geographicBoundaryEnforced: true,
+
+      outputPermissionEnforced: true,
+
       faceRecognitionEnabled: false,
-      persistentIdentityTrackingEnabled: false,
-      unrestrictedBackgroundSurveillanceEnabled: false,
+
+      persistentIdentityTrackingEnabled:
+        false,
+
+      unrestrictedBackgroundSurveillanceEnabled:
+        false,
     },
   };
+
+  const primaryAuthorization =
+    authorizations[0];
+
+  const auditEvent =
+    createSessionAuditEvent({
+      action:
+        "FUSION_SESSION_CREATED",
+
+      authorization:
+        primaryAuthorization,
+
+      success: true,
+
+      sessionId:
+        session.sessionId,
+    });
 
   return {
     success: true,
     session,
-    auditEvent: buildAuditEvent({
-      event: "FUSION_SESSION_CREATED",
-      incidentId: incident.incidentId,
-      authorizationId: null,
-      sensorType: null,
-      success: true,
-      details: {
-        sessionId: session.sessionId,
-        createdBy: session.createdBy,
-        authorizationCount: session.authorizationIds.length,
-        sensorTypes: session.sensorTypes,
-      },
-    }),
+    auditEvent,
   };
+}
+
+/* =========================================================
+   AUTHORIZATION LOOKUP
+   ========================================================= */
+
+function createAuthorizationMap(
+  authorizations
+) {
+  return new Map(
+    authorizations.map(
+      (authorization) => [
+        authorization.authorizationId,
+        authorization,
+      ]
+    )
+  );
 }
 
 function findAuthorizationForObservation(
@@ -269,14 +490,44 @@ function findAuthorizationForObservation(
   authorizationMap
 ) {
   if (
-    observation &&
-    isNonEmptyString(observation.authorizationId)
+    !observation ||
+    !isNonEmptyString(
+      observation.authorizationId
+    )
   ) {
-    return authorizationMap.get(observation.authorizationId) || null;
+    return null;
   }
 
-  return null;
+  return (
+    authorizationMap.get(
+      observation.authorizationId
+    ) || null
+  );
 }
+
+/* =========================================================
+   SENSOR / OBSERVATION COMPATIBILITY
+   ========================================================= */
+
+function isObservationAllowedForSensor(
+  sensorType,
+  observationType
+) {
+  const allowed =
+    SENSOR_OBSERVATION_MAP[sensorType];
+
+  if (!Array.isArray(allowed)) {
+    return false;
+  }
+
+  return allowed.includes(
+    observationType
+  );
+}
+
+/* =========================================================
+   OBSERVATION VALIDATION
+   ========================================================= */
 
 function validateSessionObservation({
   session,
@@ -285,24 +536,69 @@ function validateSessionObservation({
   authorization,
   now = new Date(),
 }) {
-  if (!session || session.status !== SESSION_STATUS.ACTIVE) {
+  if (
+    !session ||
+    typeof session !== "object"
+  ) {
     return {
       valid: false,
-      reason: "Fusion session is not active.",
+      error:
+        "Fusion session is required.",
     };
   }
 
-  if (!observation || typeof observation !== "object") {
+  if (
+    session.status !==
+    SESSION_STATUS.ACTIVE
+  ) {
     return {
       valid: false,
-      reason: "Observation is required.",
+      error:
+        "Fusion session is not active.",
     };
   }
 
-  if (!authorization) {
+  if (
+    !incident ||
+    incident.status !== "ACTIVE"
+  ) {
     return {
       valid: false,
-      reason: "Observation authorization was not found.",
+      error:
+        "Incident must be ACTIVE.",
+    };
+  }
+
+  if (
+    incident.incidentId !==
+    session.incidentId
+  ) {
+    return {
+      valid: false,
+      error:
+        "Incident does not match fusion session.",
+    };
+  }
+
+  if (
+    !observation ||
+    typeof observation !== "object"
+  ) {
+    return {
+      valid: false,
+      error:
+        "Observation is required.",
+    };
+  }
+
+  if (
+    !authorization ||
+    typeof authorization !== "object"
+  ) {
+    return {
+      valid: false,
+      error:
+        "Observation authorization was not found.",
     };
   }
 
@@ -313,112 +609,192 @@ function validateSessionObservation({
   ) {
     return {
       valid: false,
-      reason: "Authorization is not part of this fusion session.",
+      error:
+        "Authorization is not part of this fusion session.",
     };
   }
 
   if (
-    incident.incidentId !== session.incidentId ||
-    authorization.incidentId !== session.incidentId
+    authorization.incidentId !==
+    session.incidentId
   ) {
     return {
       valid: false,
-      reason: "Incident mismatch.",
-    };
-  }
-
-  if (!isAuthorizationActive(authorization, now)) {
-    return {
-      valid: false,
-      reason: "Observation authorization is not active.",
-    };
-  }
-
-  if (observation.sensorType !== authorization.sensorType) {
-    return {
-      valid: false,
-      reason: "Observation sensor does not match authorization.",
-    };
-  }
-
-  const expectedObservationType =
-    SENSOR_OBSERVATION_MAP[authorization.sensorType];
-
-  if (!expectedObservationType) {
-    return {
-      valid: false,
-      reason: "Sensor type is not supported by the fusion engine.",
-    };
-  }
-
-  if (observation.type !== expectedObservationType) {
-    return {
-      valid: false,
-      reason: "Observation type does not match sensor type.",
+      error:
+        "Authorization incident mismatch.",
     };
   }
 
   if (
-    !isValidNumber(observation.confidence) ||
+    !isAuthorizationActive(
+      authorization,
+      now
+    )
+  ) {
+    return {
+      valid: false,
+      error:
+        "Observation authorization is not active.",
+    };
+  }
+
+  if (
+    observation.sensorType !==
+    authorization.sensorType
+  ) {
+    return {
+      valid: false,
+      error:
+        "Observation sensor type does not match authorization.",
+    };
+  }
+
+  if (
+    !isNonEmptyString(
+      observation.observationType
+    )
+  ) {
+    return {
+      valid: false,
+      error:
+        "observationType is required.",
+    };
+  }
+
+  if (
+    !isObservationAllowedForSensor(
+      authorization.sensorType,
+      observation.observationType
+    )
+  ) {
+    return {
+      valid: false,
+      error:
+        "Observation type is not permitted for this sensor.",
+    };
+  }
+
+  if (
+    !isFiniteNumber(
+      observation.confidence
+    ) ||
     observation.confidence < 0 ||
     observation.confidence > 1
   ) {
     return {
       valid: false,
-      reason: "Observation confidence must be between 0 and 1.",
+      error:
+        "Observation confidence must be between 0 and 1.",
     };
   }
 
   if (
     !observation.location ||
+    typeof observation.location !==
+      "object"
+  ) {
+    return {
+      valid: false,
+      error:
+        "Observation location is required.",
+    };
+  }
+
+  const {
+    latitude,
+    longitude,
+  } = observation.location;
+
+  if (
     !isValidCoordinate(
-      observation.location.latitude,
-      observation.location.longitude
+      latitude,
+      longitude
     )
   ) {
     return {
       valid: false,
-      reason: "Observation location is invalid.",
+      error:
+        "Observation coordinates are invalid.",
     };
   }
 
   if (
     !isCoordinateWithinAuthorization(
       authorization,
-      observation.location.latitude,
-      observation.location.longitude
+      latitude,
+      longitude
     )
   ) {
     return {
       valid: false,
-      reason: "Observation is outside its authorized geographic boundary.",
+      error:
+        "Observation is outside its authorized geographic boundary.",
     };
   }
 
-  const observationTime = parseDate(observation.timestamp);
+  const observationTime =
+    parseDate(observation.timestamp);
 
   if (!observationTime) {
     return {
       valid: false,
-      reason: "Observation timestamp is invalid.",
+      error:
+        "Observation timestamp is invalid.",
     };
   }
 
-  const nowDate = new Date(now);
+  const nowDate = parseDate(now);
+
+  if (!nowDate) {
+    return {
+      valid: false,
+      error:
+        "Current validation time is invalid.",
+    };
+  }
+
   const ageSeconds =
-    (nowDate.getTime() - observationTime.getTime()) / 1000;
+    (
+      nowDate.getTime() -
+      observationTime.getTime()
+    ) / 1000;
 
-  if (ageSeconds > SESSION_CONFIG.maxObservationAgeSeconds) {
+  if (
+    ageSeconds >
+    SESSION_CONFIG
+      .maximumObservationAgeSeconds
+  ) {
     return {
       valid: false,
-      reason: "Observation is too old.",
+      error:
+        "Observation is too old for live fusion.",
     };
   }
 
-  if (ageSeconds < -SESSION_CONFIG.maxFutureObservationSeconds) {
+  if (
+    ageSeconds <
+    -SESSION_CONFIG
+      .maximumFutureObservationSeconds
+  ) {
     return {
       valid: false,
-      reason: "Observation timestamp is too far in the future.",
+      error:
+        "Observation timestamp is too far in the future.",
+    };
+  }
+
+  if (
+    observation.summary !==
+      undefined &&
+    observation.summary !== null &&
+    !isNonEmptyString(
+      observation.summary
+    )
+  ) {
+    return {
+      valid: false,
+      error:
+        "summary must be a non-empty string when provided.",
     };
   }
 
@@ -427,64 +803,216 @@ function validateSessionObservation({
   };
 }
 
+/* =========================================================
+   NORMALIZE OBSERVATION
+   ========================================================= */
+
 function normalizeSessionObservation(
   observation,
   authorization
 ) {
   return {
-    observationId: isNonEmptyString(observation.observationId)
-      ? observation.observationId.trim()
-      : createId("GX-OBS"),
+    observationId:
+      isNonEmptyString(
+        observation.observationId
+      )
+        ? observation.observationId.trim()
+        : createId("GX_OBS"),
 
-    authorizationId: authorization.authorizationId,
-    sensorType: authorization.sensorType,
-    type: observation.type,
-    confidence: observation.confidence,
+    authorizationId:
+      authorization.authorizationId,
+
+    sensorType:
+      authorization.sensorType,
+
+    observationType:
+      observation.observationType,
+
+    confidence:
+      observation.confidence,
 
     location: {
-      latitude: observation.location.latitude,
-      longitude: observation.location.longitude,
+      latitude:
+        observation.location.latitude,
+
+      longitude:
+        observation.location.longitude,
     },
 
-    timestamp: new Date(observation.timestamp).toISOString(),
+    timestamp:
+      new Date(
+        observation.timestamp
+      ).toISOString(),
 
-    summary: sanitizeSummary(observation.summary),
+    summary:
+      safeText(observation.summary),
 
-    metadata: sanitizeMetadata(observation.metadata),
+    metadata:
+      sanitizeMetadata(
+        observation.metadata
+      ),
   };
 }
 
-function calculateCombinedConfidence(observations) {
-  if (!Array.isArray(observations) || observations.length === 0) {
+/* =========================================================
+   CONFIDENCE FUSION
+   ========================================================= */
+
+function calculateCombinedConfidence(
+  observations
+) {
+  if (
+    !Array.isArray(observations) ||
+    observations.length === 0
+  ) {
     return 0;
   }
 
-  const total = observations.reduce(
-    (sum, observation) => sum + observation.confidence,
-    0
-  );
+  const total =
+    observations.reduce(
+      (sum, observation) =>
+        sum + observation.confidence,
+      0
+    );
 
-  return Number((total / observations.length).toFixed(4));
+  const average =
+    total / observations.length;
+
+  return Number(
+    average.toFixed(4)
+  );
 }
 
-function buildMultiSensorSummary(observations) {
+/* =========================================================
+   MULTI-SENSOR SUMMARY
+   ========================================================= */
+
+function buildMultiSensorSummary(
+  observations
+) {
   const bySensor = {};
-  const byType = {};
+  const byObservationType = {};
 
   for (const observation of observations) {
-    bySensor[observation.sensorType] =
-      (bySensor[observation.sensorType] || 0) + 1;
+    bySensor[
+      observation.sensorType
+    ] =
+      (
+        bySensor[
+          observation.sensorType
+        ] || 0
+      ) + 1;
 
-    byType[observation.type] =
-      (byType[observation.type] || 0) + 1;
+    byObservationType[
+      observation.observationType
+    ] =
+      (
+        byObservationType[
+          observation.observationType
+        ] || 0
+      ) + 1;
   }
 
   return {
-    totalObservations: observations.length,
-    sensorCount: Object.keys(bySensor).length,
+    totalObservations:
+      observations.length,
+
+    sensorCount:
+      Object.keys(bySensor).length,
+
     bySensor,
-    byType,
+
+    byObservationType,
   };
+}
+
+/* =========================================================
+   OUTPUT SELECTION
+   ========================================================= */
+
+function getCandidateOutputs(
+  observationType
+) {
+  switch (observationType) {
+    case OBSERVATION_TYPES
+      .VISUAL_DETECTION:
+
+      return [
+        ALLOWED_OUTPUTS
+          .DETECTION_SUMMARY,
+
+        ALLOWED_OUTPUTS
+          .EMERGENCY_MAP,
+      ];
+
+    case OBSERVATION_TYPES
+      .THERMAL_DETECTION:
+
+      return [
+        ALLOWED_OUTPUTS
+          .THERMAL_ALERT,
+
+        ALLOWED_OUTPUTS
+          .EMERGENCY_MAP,
+      ];
+
+    case OBSERVATION_TYPES
+      .NIGHT_VISION_DETECTION:
+
+      return [
+        ALLOWED_OUTPUTS
+          .DETECTION_SUMMARY,
+
+        ALLOWED_OUTPUTS
+          .EMERGENCY_MAP,
+      ];
+
+    case OBSERVATION_TYPES
+      .WAMI_CONTEXT:
+
+      return [
+        ALLOWED_OUTPUTS
+          .DETECTION_SUMMARY,
+
+        ALLOWED_OUTPUTS
+          .EMERGENCY_MAP,
+      ];
+
+    case OBSERVATION_TYPES
+      .DRONE_TELEMETRY:
+
+      return [
+        ALLOWED_OUTPUTS
+          .SENSOR_HEALTH,
+      ];
+
+    case OBSERVATION_TYPES
+      .SAR_CONTEXT:
+
+      return [
+        ALLOWED_OUTPUTS
+          .TERRAIN_CONTEXT,
+      ];
+
+    case OBSERVATION_TYPES
+      .WEATHER_CONTEXT:
+
+      return [
+        ALLOWED_OUTPUTS
+          .WEATHER_CONTEXT,
+      ];
+
+    case OBSERVATION_TYPES
+      .TERRAIN_CONTEXT:
+
+      return [
+        ALLOWED_OUTPUTS
+          .TERRAIN_CONTEXT,
+      ];
+
+    default:
+      return [];
+  }
 }
 
 function determineSessionOutputs(
@@ -494,82 +1022,38 @@ function determineSessionOutputs(
   const outputs = new Set();
 
   for (const observation of observations) {
-    const authorization = authorizationMap.get(
-      observation.authorizationId
-    );
+    const authorization =
+      authorizationMap.get(
+        observation.authorizationId
+      );
 
     if (!authorization) {
       continue;
     }
 
-    const candidates = [];
-
-    switch (observation.type) {
-      case OBSERVATION_TYPES.THERMAL_DETECTION:
-        candidates.push(
-          "THERMAL_ALERT",
-          "DETECTION_SUMMARY",
-          "EMERGENCY_MAP"
-        );
-        break;
-
-      case OBSERVATION_TYPES.VISUAL_DETECTION:
-      case OBSERVATION_TYPES.NIGHT_VISION_DETECTION:
-        candidates.push(
-          "DETECTION_SUMMARY",
-          "EMERGENCY_MAP"
-        );
-        break;
-
-      case OBSERVATION_TYPES.WAMI_CONTEXT:
-        candidates.push(
-          "SEARCH_AREA_STATUS",
-          "EMERGENCY_MAP"
-        );
-        break;
-
-      case OBSERVATION_TYPES.DRONE_TELEMETRY:
-        candidates.push(
-          "SENSOR_HEALTH",
-          "EMERGENCY_MAP"
-        );
-        break;
-
-      case OBSERVATION_TYPES.SAR_CONTEXT:
-        candidates.push(
-          "SEARCH_AREA_STATUS",
-          "ROUTE_HAZARD",
-          "EMERGENCY_MAP"
-        );
-        break;
-
-      case OBSERVATION_TYPES.WEATHER_CONTEXT:
-        candidates.push(
-          "WEATHER_CONTEXT",
-          "ROUTE_HAZARD"
-        );
-        break;
-
-      case OBSERVATION_TYPES.TERRAIN_CONTEXT:
-        candidates.push(
-          "TERRAIN_CONTEXT",
-          "ROUTE_HAZARD"
-        );
-        break;
-
-      default:
-        break;
-    }
+    const candidates =
+      getCandidateOutputs(
+        observation.observationType
+      );
 
     for (const output of candidates) {
-      if (isOutputAllowed(authorization, output)) {
+      if (
+        isOutputAllowed(
+          authorization,
+          output
+        )
+      ) {
         outputs.add(output);
       }
     }
   }
 
-  return [...outputs];
+  return Array.from(outputs);
 }
+
+/* =========================================================
+   MULTI-SENSOR FUSION
+   ========================================================= */
 
 function fuseSessionObservations({
   session,
@@ -578,93 +1062,151 @@ function fuseSessionObservations({
   observations,
   now = new Date(),
 }) {
-  const incidentValidation = validateIncident(incident);
+  const incidentValidation =
+    validateIncident(incident);
 
   if (!incidentValidation.valid) {
     return {
       success: false,
-      error: incidentValidation.reason,
+      error:
+        incidentValidation.error,
     };
   }
 
-  if (!session || session.status !== SESSION_STATUS.ACTIVE) {
+  if (
+    !session ||
+    typeof session !== "object"
+  ) {
     return {
       success: false,
-      error: "Fusion session is not active.",
+      error:
+        "Fusion session is required.",
     };
   }
 
-  if (session.incidentId !== incident.incidentId) {
+  if (
+    session.status !==
+    SESSION_STATUS.ACTIVE
+  ) {
     return {
       success: false,
-      error: "Fusion session does not belong to this incident.",
+      error:
+        "Fusion session is not active.",
     };
   }
 
-  const authorizationValidation = validateAuthorizationSet({
-    incident,
-    authorizations,
-    now,
-  });
+  if (
+    session.incidentId !==
+    incident.incidentId
+  ) {
+    return {
+      success: false,
+      error:
+        "Fusion session does not belong to this incident.",
+    };
+  }
+
+  const authorizationValidation =
+    validateAuthorizationSet({
+      incident,
+      authorizations,
+      now,
+    });
 
   if (!authorizationValidation.valid) {
     return {
       success: false,
-      error: authorizationValidation.reason,
+      error:
+        authorizationValidation.error,
     };
   }
 
-  const authorizationMap = new Map(
-    authorizations.map((authorization) => [
-      authorization.authorizationId,
-      authorization,
-    ])
-  );
+  const authorizationMap =
+    createAuthorizationMap(
+      authorizations
+    );
 
-  for (const authorizationId of session.authorizationIds) {
-    if (!authorizationMap.has(authorizationId)) {
+  for (
+    const authorizationId
+    of session.authorizationIds
+  ) {
+    if (
+      !authorizationMap.has(
+        authorizationId
+      )
+    ) {
       return {
         success: false,
-        error: "A session authorization is missing.",
+        error:
+          "A fusion-session authorization is missing.",
       };
     }
   }
 
-  if (!Array.isArray(observations) || observations.length === 0) {
+  if (!Array.isArray(observations)) {
     return {
       success: false,
-      error: "At least one observation is required.",
+      error:
+        "observations must be an array.",
     };
   }
 
-  if (observations.length > SESSION_CONFIG.maxObservations) {
+  if (observations.length === 0) {
     return {
       success: false,
-      error: "Too many observations.",
+      error:
+        "At least one observation is required.",
+    };
+  }
+
+  if (
+    observations.length >
+    SESSION_CONFIG.maximumObservations
+  ) {
+    return {
+      success: false,
+      error:
+        "Fusion observation limit exceeded.",
     };
   }
 
   const normalizedObservations = [];
 
-  for (const observation of observations) {
+  for (
+    let index = 0;
+    index < observations.length;
+    index += 1
+  ) {
+    const observation =
+      observations[index];
+
     const authorization =
       findAuthorizationForObservation(
         observation,
         authorizationMap
       );
 
-    const validation = validateSessionObservation({
-      session,
-      incident,
-      observation,
-      authorization,
-      now,
-    });
+    const validation =
+      validateSessionObservation({
+        session,
+        incident,
+        observation,
+        authorization,
+        now,
+      });
 
+    /*
+     * FAIL CLOSED:
+     * Reject the entire fusion batch if
+     * any single observation is invalid.
+     */
     if (!validation.valid) {
       return {
         success: false,
-        error: validation.reason,
+
+        error:
+          `Observation ${index + 1}: ` +
+          validation.error,
       };
     }
 
@@ -676,129 +1218,239 @@ function fuseSessionObservations({
     );
   }
 
-  const result = {
-    fusionId: createId("GX-MULTI"),
-    sessionId: session.sessionId,
-    version: SESSION_CONFIG.version,
-    incidentId: incident.incidentId,
+  const confidence =
+    calculateCombinedConfidence(
+      normalizedObservations
+    );
 
-    confidence:
-      calculateCombinedConfidence(normalizedObservations),
+  const summary =
+    buildMultiSensorSummary(
+      normalizedObservations
+    );
 
-    summary:
-      buildMultiSensorSummary(normalizedObservations),
+  const outputs =
+    determineSessionOutputs(
+      normalizedObservations,
+      authorizationMap
+    );
 
-    outputs:
-      determineSessionOutputs(
-        normalizedObservations,
-        authorizationMap
+  const fusionResult = {
+    fusionId:
+      createId(
+        "GX_MULTI_FUSION"
       ),
 
-    observations: normalizedObservations,
+    fusionVersion:
+      SESSION_CONFIG.version,
 
-    generatedAt: new Date(now).toISOString(),
+    sessionId:
+      session.sessionId,
+
+    incidentId:
+      incident.incidentId,
+
+    confidence,
+
+    summary,
+
+    outputs,
+
+    observations:
+      normalizedObservations,
+
+    generatedAt:
+      new Date(now).toISOString(),
 
     privacyControls: {
       emergencyScoped: true,
-      independentSensorAuthorizationRequired: true,
-      geographicBoundaryEnforced: true,
-      faceRecognitionEnabled: false,
-      persistentIdentityTrackingEnabled: false,
-      unrestrictedBackgroundSurveillanceEnabled: false,
+
+      independentSensorAuthorizationRequired:
+        true,
+
+      geographicBoundaryEnforced:
+        true,
+
+      outputPermissionEnforced:
+        true,
+
+      faceRecognitionEnabled:
+        false,
+
+      persistentIdentityTrackingEnabled:
+        false,
+
+      unrestrictedBackgroundSurveillanceEnabled:
+        false,
     },
   };
 
+  const primaryAuthorization =
+    authorizations[0];
+
+  const auditEvent =
+    createSessionAuditEvent({
+      action:
+        "MULTI_SENSOR_FUSION_CREATED",
+
+      authorization:
+        primaryAuthorization,
+
+      success: true,
+
+      sessionId:
+        session.sessionId,
+
+      fusionId:
+        fusionResult.fusionId,
+    });
+
   return {
     success: true,
-    result,
-    auditEvent: buildAuditEvent({
-      event: "MULTI_SENSOR_FUSION_COMPLETED",
-      incidentId: incident.incidentId,
-      authorizationId: null,
-      sensorType: null,
-      success: true,
-      details: {
-        sessionId: session.sessionId,
-        fusionId: result.fusionId,
-        observationCount:
-          normalizedObservations.length,
-        sensorCount: result.summary.sensorCount,
-        outputs: result.outputs,
-      },
-    }),
+    fusionResult,
+    auditEvent,
   };
 }
+
+/* =========================================================
+   CLOSE FUSION SESSION
+   ========================================================= */
 
 function closeFusionSession({
   session,
   closedBy,
+  authorization = null,
   now = new Date(),
 }) {
-  if (!session || typeof session !== "object") {
+  if (
+    !session ||
+    typeof session !== "object"
+  ) {
     return {
       success: false,
-      error: "Fusion session is required.",
+      error:
+        "Fusion session is required.",
     };
   }
 
-  if (session.status !== SESSION_STATUS.ACTIVE) {
+  if (
+    session.status !==
+    SESSION_STATUS.ACTIVE
+  ) {
     return {
       success: false,
-      error: "Fusion session is not active.",
+      error:
+        "Fusion session is not active.",
     };
   }
 
   if (!isNonEmptyString(closedBy)) {
     return {
       success: false,
-      error: "closedBy is required.",
+      error:
+        "closedBy is required.",
     };
   }
 
   const closedSession = {
     ...session,
-    status: SESSION_STATUS.CLOSED,
-    closedBy: closedBy.trim(),
-    closedAt: new Date(now).toISOString(),
+
+    status:
+      SESSION_STATUS.CLOSED,
+
+    closedBy:
+      closedBy.trim(),
+
+    closedAt:
+      new Date(now).toISOString(),
   };
+
+  const auditEvent =
+    createSessionAuditEvent({
+      action:
+        "FUSION_SESSION_CLOSED",
+
+      authorization,
+
+      success: true,
+
+      sessionId:
+        session.sessionId,
+    });
 
   return {
     success: true,
-    session: closedSession,
-    auditEvent: buildAuditEvent({
-      event: "FUSION_SESSION_CLOSED",
-      incidentId: session.incidentId,
-      authorizationId: null,
-      sensorType: null,
-      success: true,
-      details: {
-        sessionId: session.sessionId,
-        closedBy: closedSession.closedBy,
-      },
-    }),
+
+    session:
+      closedSession,
+
+    auditEvent,
   };
 }
 
+/* =========================================================
+   STATUS
+   ========================================================= */
+
 function getFusionSessionStatus() {
   return {
-    version: SESSION_CONFIG.version,
+    name:
+      "Guardian X Multi-Sensor Fusion Session",
+
+    version:
+      SESSION_CONFIG.version,
+
+    failClosed: true,
+
     multiSensorFusion: true,
-    independentSensorAuthorizationRequired: true,
-    geographicBoundaryEnforced: true,
-    hardwareActivation: false,
-    faceRecognitionEnabled: false,
-    persistentIdentityTrackingEnabled: false,
-    unrestrictedBackgroundSurveillanceEnabled: false,
+
+    independentSensorAuthorizationRequired:
+      true,
+
+    geographicBoundaryEnforced:
+      true,
+
+    outputPermissionEnforced:
+      true,
+
+    hardwareActivation:
+      false,
+
+    faceRecognitionEnabled:
+      false,
+
+    persistentIdentityTrackingEnabled:
+      false,
+
+    unrestrictedBackgroundSurveillanceEnabled:
+      false,
   };
 }
+
+/* =========================================================
+   EXPORTS
+   ========================================================= */
 
 module.exports = {
   SESSION_CONFIG,
   SESSION_STATUS,
-  createFusionSession,
+
   validateAuthorizationSet,
+
+  createFusionSession,
+
   validateSessionObservation,
+
+  normalizeSessionObservation,
+
+  calculateCombinedConfidence,
+
+  buildMultiSensorSummary,
+
+  determineSessionOutputs,
+
   fuseSessionObservations,
+
   closeFusionSession,
+
   getFusionSessionStatus,
 };
