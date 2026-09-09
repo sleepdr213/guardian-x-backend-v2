@@ -659,9 +659,39 @@ function expireSensorAuthorization(
     };
   }
 
-  if (!isAuthorizationActive(authorization, now)) {
+  const nowDate = new Date(now);
+  const startsAt = new Date(authorization.startsAt);
+  const expiresAt = new Date(authorization.expiresAt);
+
+  if (
+    Number.isNaN(nowDate.getTime()) ||
+    Number.isNaN(startsAt.getTime()) ||
+    Number.isNaN(expiresAt.getTime())
+  ) {
+    return {
+      success: false,
+      error: "Authorization timing information is invalid.",
+    };
+  }
+
+  /*
+   * A future authorization is NOT expired.
+   * It simply has not started yet.
+   */
+  if (nowDate < startsAt) {
+    return {
+      success: false,
+      error: "Authorization has not started yet.",
+    };
+  }
+
+  /*
+   * Only mark the authorization EXPIRED once its
+   * actual expiration time has been reached.
+   */
+  if (nowDate >= expiresAt) {
     authorization.status = "EXPIRED";
-    authorization.expiredAt = new Date(now).toISOString();
+    authorization.expiredAt = nowDate.toISOString();
 
     return {
       success: true,
