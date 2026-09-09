@@ -8,6 +8,8 @@
  *  2. Valid fusion observation
  *  3. Out-of-boundary observation rejection
  *  4. Expired authorization rejection
+ *  5. Future authorization must NOT be marked expired
+ *  6. Fusion Engine security controls
  *
  * This test does NOT activate hardware or contact real sensors.
  */
@@ -19,6 +21,7 @@ const {
   PURPOSES,
   ALLOWED_OUTPUTS,
   createSensorAuthorization,
+  expireSensorAuthorization,
 } = require("./sensorPolicy");
 
 const {
@@ -39,6 +42,10 @@ function logSuccess(message) {
   console.log(`PASS: ${message}`);
 }
 
+/* =========================================================
+   TESTS
+   ========================================================= */
+
 function runTests() {
   console.log("\nGuardian X Fusion Engine Tests\n");
 
@@ -58,9 +65,11 @@ function runTests() {
   const request = {
     incidentId: incident.incidentId,
 
-    sensorType: SENSOR_TYPES.DRONE_THERMAL,
+    sensorType:
+      SENSOR_TYPES.DRONE_THERMAL,
 
-    purpose: PURPOSES.SEARCH_AND_RESCUE,
+    purpose:
+      PURPOSES.SEARCH_AND_RESCUE,
 
     geographicBoundary: {
       latitude: 19.4326,
@@ -68,15 +77,20 @@ function runTests() {
       radiusMeters: 1000,
     },
 
-    requestedBy: "test-user",
+    requestedBy:
+      "test-user",
 
-    approvedBy: "test-authorized-operator",
+    approvedBy:
+      "test-authorized-operator",
 
-    startsAt: minutesFromNow(-1),
+    startsAt:
+      minutesFromNow(-1),
 
-    expiresAt: minutesFromNow(10),
+    expiresAt:
+      minutesFromNow(10),
 
-    dataRetentionUntil: minutesFromNow(60),
+    dataRetentionUntil:
+      minutesFromNow(60),
 
     allowedOutputs: [
       ALLOWED_OUTPUTS.THERMAL_ALERT,
@@ -85,27 +99,34 @@ function runTests() {
   };
 
   const authorizationResult =
-    createSensorAuthorization(request, incident);
+    createSensorAuthorization(
+      request,
+      incident
+    );
 
   assert.strictEqual(
     authorizationResult.authorized,
     true,
     `Authorization failed: ${
-      authorizationResult.errors?.join(", ") || "unknown error"
+      authorizationResult.errors?.join(", ") ||
+      "unknown error"
     }`
   );
 
   const authorization =
     authorizationResult.authorization;
 
-  logSuccess("Valid emergency sensor authorization created");
+  logSuccess(
+    "Valid emergency sensor authorization created"
+  );
 
   /* =======================================================
      TEST 2 — VALID THERMAL OBSERVATION
      ======================================================= */
 
   const validObservation = {
-    sensorType: SENSOR_TYPES.DRONE_THERMAL,
+    sensorType:
+      SENSOR_TYPES.DRONE_THERMAL,
 
     observationType:
       OBSERVATION_TYPES.THERMAL_DETECTION,
@@ -117,7 +138,8 @@ function runTests() {
       longitude: -99.1331,
     },
 
-    timestamp: new Date(),
+    timestamp:
+      new Date(),
 
     summary:
       "Thermal observation detected inside authorized search area.",
@@ -125,21 +147,26 @@ function runTests() {
     metadata: {
       altitude: 80,
       sensorHealth: "OK",
-      platformId: "GUARDIAN-TEST-DRONE",
+      platformId:
+        "GUARDIAN-TEST-DRONE",
     },
   };
 
-  const fusionResult = fuseObservations({
-    authorization,
-    incident,
-    observations: [validObservation],
-  });
+  const fusionResult =
+    fuseObservations({
+      authorization,
+      incident,
+      observations: [
+        validObservation,
+      ],
+    });
 
   assert.strictEqual(
     fusionResult.success,
     true,
     `Fusion failed: ${
-      fusionResult.errors?.join(", ") || "unknown error"
+      fusionResult.errors?.join(", ") ||
+      "unknown error"
     }`
   );
 
@@ -154,18 +181,22 @@ function runTests() {
   );
 
   assert.strictEqual(
-    fusionResult.fusionResult.privacyControls
+    fusionResult.fusionResult
+      .privacyControls
       .faceRecognitionEnabled,
     false
   );
 
   assert.strictEqual(
-    fusionResult.fusionResult.privacyControls
+    fusionResult.fusionResult
+      .privacyControls
       .persistentIdentityTrackingEnabled,
     false
   );
 
-  logSuccess("Authorized thermal observation fused correctly");
+  logSuccess(
+    "Authorized thermal observation fused correctly"
+  );
 
   /* =======================================================
      TEST 3 — OUTSIDE AUTHORIZED AREA MUST FAIL
@@ -179,14 +210,18 @@ function runTests() {
       longitude: -100.0,
     },
 
-    timestamp: new Date(),
+    timestamp:
+      new Date(),
   };
 
-  const outsideResult = fuseObservations({
-    authorization,
-    incident,
-    observations: [outsideObservation],
-  });
+  const outsideResult =
+    fuseObservations({
+      authorization,
+      incident,
+      observations: [
+        outsideObservation,
+      ],
+    });
 
   assert.strictEqual(
     outsideResult.success,
@@ -194,7 +229,9 @@ function runTests() {
     "Out-of-boundary observation should have been rejected"
   );
 
-  logSuccess("Out-of-boundary observation rejected");
+  logSuccess(
+    "Out-of-boundary observation rejected"
+  );
 
   /* =======================================================
      TEST 4 — EXPIRED AUTHORIZATION MUST FAIL
@@ -203,15 +240,24 @@ function runTests() {
   const expiredAuthorization = {
     ...authorization,
 
-    startsAt: minutesFromNow(-20).toISOString(),
-    expiresAt: minutesFromNow(-10).toISOString(),
+    startsAt:
+      minutesFromNow(-20).toISOString(),
+
+    expiresAt:
+      minutesFromNow(-10).toISOString(),
   };
 
-  const expiredResult = fuseObservations({
-    authorization: expiredAuthorization,
-    incident,
-    observations: [validObservation],
-  });
+  const expiredResult =
+    fuseObservations({
+      authorization:
+        expiredAuthorization,
+
+      incident,
+
+      observations: [
+        validObservation,
+      ],
+    });
 
   assert.strictEqual(
     expiredResult.success,
@@ -219,13 +265,122 @@ function runTests() {
     "Expired authorization should have been rejected"
   );
 
-  logSuccess("Expired authorization rejected");
+  logSuccess(
+    "Expired authorization rejected"
+  );
+
+  /* =======================================================
+     TEST 5 — FUTURE AUTHORIZATION MUST NOT EXPIRE
+     ======================================================= */
+
+  const futureAuthorization = {
+    ...authorization,
+
+    authorizationId:
+      "sensor_FUTURE_EXPIRATION_REGRESSION_TEST",
+
+    status:
+      "AUTHORIZED",
+
+    startsAt:
+      minutesFromNow(5).toISOString(),
+
+    expiresAt:
+      minutesFromNow(10).toISOString(),
+  };
+
+  /*
+   * Use a fixed current time for the expiration check.
+   * At this moment the authorization has not started yet.
+   */
+  const expirationCheckTime =
+    new Date();
+
+  const futureExpirationResult =
+    expireSensorAuthorization(
+      futureAuthorization,
+      expirationCheckTime
+    );
+
+  assert.strictEqual(
+    futureExpirationResult.success,
+    false,
+    "Future authorization must not be expired"
+  );
+
+  assert.strictEqual(
+    futureExpirationResult.error,
+    "Authorization has not started yet."
+  );
+
+  assert.strictEqual(
+    futureAuthorization.status,
+    "AUTHORIZED",
+    "Future authorization status must remain AUTHORIZED"
+  );
+
+  assert.strictEqual(
+    futureAuthorization.expiredAt,
+    undefined,
+    "Future authorization must not receive an expiredAt timestamp"
+  );
+
+  logSuccess(
+    "Future authorization correctly remains unexpired"
+  );
+
+  /* =======================================================
+     TEST 6 — ACTUAL EXPIRATION MUST WORK
+     ======================================================= */
+
+  const authorizationReadyToExpire = {
+    ...authorization,
+
+    authorizationId:
+      "sensor_ACTUAL_EXPIRATION_TEST",
+
+    status:
+      "AUTHORIZED",
+
+    startsAt:
+      minutesFromNow(-20).toISOString(),
+
+    expiresAt:
+      minutesFromNow(-10).toISOString(),
+  };
+
+  const actualExpirationResult =
+    expireSensorAuthorization(
+      authorizationReadyToExpire,
+      new Date()
+    );
+
+  assert.strictEqual(
+    actualExpirationResult.success,
+    true,
+    "Authorization past expiresAt should be marked expired"
+  );
+
+  assert.strictEqual(
+    authorizationReadyToExpire.status,
+    "EXPIRED"
+  );
+
+  assert.strictEqual(
+    typeof authorizationReadyToExpire.expiredAt,
+    "string"
+  );
+
+  logSuccess(
+    "Past authorization expires correctly"
+  );
 
   /* =======================================================
      ENGINE STATUS
      ======================================================= */
 
-  const status = getFusionEngineStatus();
+  const status =
+    getFusionEngineStatus();
 
   assert.strictEqual(
     status.authorizationRequired,
@@ -242,9 +397,13 @@ function runTests() {
     false
   );
 
-  logSuccess("Fusion Engine security controls verified");
+  logSuccess(
+    "Fusion Engine security controls verified"
+  );
 
-  console.log("\nALL GUARDIAN X FUSION TESTS PASSED\n");
+  console.log(
+    "\nALL GUARDIAN X FUSION TESTS PASSED\n"
+  );
 }
 
 /* =========================================================
@@ -254,7 +413,13 @@ function runTests() {
 try {
   runTests();
 } catch (error) {
-  console.error("\nGUARDIAN X FUSION TEST FAILED");
-  console.error(error.message);
+  console.error(
+    "\nGUARDIAN X FUSION TEST FAILED"
+  );
+
+  console.error(
+    error.message
+  );
+
   process.exitCode = 1;
-    }
+}
