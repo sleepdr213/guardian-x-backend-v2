@@ -32,3 +32,6 @@ jobs:
 
       - name: Run Guardian X Multi-Sensor Fusion Tests
         run: node fusion/fusionSessionTest.js
+
+      - name: Run Guardian X Approver Policy Tests
+        run: node fusion/approverPolicyTest.js
