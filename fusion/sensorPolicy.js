@@ -24,6 +24,10 @@
 
 const crypto = require("crypto");
 
+const {
+  verifyApprovalForSensor,
+} = require("./approverPolicy");
+
 /* =========================================================
    SENSOR REGISTRY
    ========================================================= */
@@ -326,9 +330,23 @@ function validateSensorRequest(request, incident) {
 
   /* Approver */
 
-  if (!isNonEmptyString(request.approvedBy)) {
-    errors.push("approvedBy is required.");
+if (!request.approval || typeof request.approval !== "object") {
+  errors.push("Verified sensor approval is required.");
+} else {
+  const approvalVerification = verifyApprovalForSensor({
+    approval: request.approval,
+    incident,
+    sensorType: request.sensorType,
+  });
+
+  if (!approvalVerification.success) {
+    errors.push(
+      ...(approvalVerification.errors || [
+        "Sensor approval verification failed.",
+      ])
+    );
   }
+}
 
   /* Geography */
 
@@ -490,7 +508,8 @@ function createSensorAuthorization(request, incident) {
 
     requestedBy: request.requestedBy,
 
-    approvedBy: request.approvedBy,
+    approvedBy: request.approval.approvedBy,
+    approvalId: request.approval.approvalId,
 
     startsAt: new Date(request.startsAt).toISOString(),
 
