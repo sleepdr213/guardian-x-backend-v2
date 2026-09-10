@@ -18,6 +18,13 @@ const rateLimit = require("express-rate-limit");
 const helmet = require("helmet");
 const crypto = require("crypto");
 
+const {
+  APPROVER_ROLES,
+  APPROVER_STATUS,
+  createVerifiedApproval,
+  verifyApprovalForSensor,
+} = require("./fusion/approverPolicy");
+
 // =====================================
 // APP SETUP
 // =====================================
@@ -296,6 +303,93 @@ const User = mongoose.model(
   "User",
   UserSchema
 );
+
+// =====================================
+// APPROVER MODEL
+// =====================================
+
+const ApproverSchema =
+  new mongoose.Schema(
+    {
+      approverId: {
+        type: String,
+        required: true,
+        unique: true,
+        trim: true,
+        index: true,
+      },
+
+      userEmail: {
+        type: String,
+        required: true,
+        lowercase: true,
+        trim: true,
+        index: true,
+      },
+
+      role: {
+        type: String,
+        required: true,
+        enum: Object.values(APPROVER_ROLES),
+        index: true,
+      },
+
+      status: {
+        type: String,
+        required: true,
+        enum: Object.values(APPROVER_STATUS),
+        default: APPROVER_STATUS.ACTIVE,
+        index: true,
+      },
+
+      verifiedAt: {
+        type: Date,
+        default: Date.now,
+      },
+
+      verifiedBy: {
+        type: String,
+        required: true,
+        trim: true,
+      },
+
+      suspendedAt: {
+        type: Date,
+        default: null,
+      },
+
+      revokedAt: {
+        type: Date,
+        default: null,
+      },
+
+      createdAt: {
+        type: Date,
+        default: Date.now,
+      },
+
+      updatedAt: {
+        type: Date,
+        default: Date.now,
+      },
+    },
+    {
+      versionKey: false,
+    }
+  );
+
+ApproverSchema.index(
+  {
+    userEmail: 1,
+    status: 1,
+  }
+);
+
+const Approver =
+  mongoose.model(
+    "Approver",
+    ApproverSchema
+  );
 
 // =====================================
 // CONTACT MODEL
