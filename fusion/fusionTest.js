@@ -30,6 +30,12 @@ const {
   getFusionEngineStatus,
 } = require("./fusionEngine");
 
+const {
+  APPROVER_ROLES,
+  APPROVER_STATUS,
+  createVerifiedApproval,
+} = require("./approverPolicy");
+
 /* =========================================================
    TEST HELPERS
    ========================================================= */
@@ -58,45 +64,66 @@ function runTests() {
     status: "ACTIVE",
   };
 
-  /* =======================================================
-     TEST 1 — CREATE VALID AUTHORIZATION
-     ======================================================= */
+  /* ============================================================
+   TEST 1 — CREATE VALID AUTHORIZATION
+   ============================================================ */
 
-  const request = {
-    incidentId: incident.incidentId,
+const approver = {
+  approverId: "test-authorized-operator",
+  role: APPROVER_ROLES.INCIDENT_SUPERVISOR,
+  status: APPROVER_STATUS.ACTIVE,
+};
 
-    sensorType:
-      SENSOR_TYPES.DRONE_THERMAL,
+const approvalResult = createVerifiedApproval({
+  incident,
+  approver,
+  sensorType: SENSOR_TYPES.DRONE_THERMAL,
+  requestedBy: "test-user",
+});
 
-    purpose:
-      PURPOSES.SEARCH_AND_RESCUE,
+assert.strictEqual(
+  approvalResult.success,
+  true,
+  `Verified approval failed: ${
+    approvalResult.errors?.join(", ") || "unknown error"
+  }`
+);
 
-    geographicBoundary: {
-      latitude: 19.4326,
-      longitude: -99.1332,
-      radiusMeters: 1000,
-    },
+const request = {
+  incidentId: incident.incidentId,
 
-    requestedBy:
-      "test-user",
+  sensorType:
+    SENSOR_TYPES.DRONE_THERMAL,
 
-    approvedBy:
-      "test-authorized-operator",
+  purpose:
+    PURPOSES.SEARCH_AND_RESCUE,
 
-    startsAt:
-      minutesFromNow(-1),
+  geographicBoundary: {
+    latitude: 19.4326,
+    longitude: -99.1332,
+    radiusMeters: 1000,
+  },
 
-    expiresAt:
-      minutesFromNow(10),
+  requestedBy:
+    "test-user",
 
-    dataRetentionUntil:
-      minutesFromNow(60),
+  approval:
+    approvalResult.approval,
 
-    allowedOutputs: [
-      ALLOWED_OUTPUTS.THERMAL_ALERT,
-      ALLOWED_OUTPUTS.EMERGENCY_MAP,
-    ],
-  };
+  startsAt:
+    minutesFromNow(-1),
+
+  expiresAt:
+    minutesFromNow(10),
+
+  dataRetentionUntil:
+    minutesFromNow(60),
+
+  allowedOutputs: [
+    ALLOWED_OUTPUTS.THERMAL_ALERT,
+    ALLOWED_OUTPUTS.EMERGENCY_MAP,
+  ],
+};
 
   const authorizationResult =
     createSensorAuthorization(
