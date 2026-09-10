@@ -38,6 +38,12 @@ const {
   getFusionSessionStatus,
 } = require("./fusionSession");
 
+const {
+  APPROVER_ROLES,
+  APPROVER_STATUS,
+  createVerifiedApproval,
+} = require("./approverPolicy");
+
 /* =========================================================
    TEST HELPERS
    ========================================================= */
@@ -54,6 +60,29 @@ function createAuthorization({
   allowedOutputs,
   now,
 }) {
+  const approver = {
+    approverId: `guardian-test-approver-${sensorType}`,
+    role: APPROVER_ROLES.INCIDENT_SUPERVISOR,
+    status: APPROVER_STATUS.ACTIVE,
+  };
+
+  const approvalResult = createVerifiedApproval({
+    incident,
+    approver,
+    sensorType,
+    requestedBy: "guardian-test-user",
+  });
+
+  assert.strictEqual(
+    approvalResult.success,
+    true,
+    `Verified approval creation failed for ${sensorType}: ${
+      approvalResult.errors
+        ? approvalResult.errors.join(", ")
+        : "unknown error"
+    }`
+  );
+
   const result = createSensorAuthorization(
     {
       incidentId: incident.incidentId,
@@ -72,8 +101,8 @@ function createAuthorization({
       requestedBy:
         "guardian-test-user",
 
-      approvedBy:
-        "guardian-test-authorized-operator",
+      approval:
+        approvalResult.approval,
 
       /*
        * Authorization begins one minute before
@@ -104,7 +133,7 @@ function createAuthorization({
   );
 
   return result.authorization;
-}
+      }
 
 function buildObservation({
   authorization,
