@@ -864,6 +864,107 @@ async function verifyAdmin(
 }
 
 // =====================================
+// ADMIN APPROVER ROUTES
+// =====================================
+
+app.post(
+  "/api/admin/approvers",
+  verifyToken,
+  verifyAdmin,
+  async (req, res) => {
+    try {
+      const userEmail =
+        normalizeEmail(req.body?.userEmail);
+
+      const role =
+        typeof req.body?.role === "string"
+          ? req.body.role.trim()
+          : "";
+
+      if (!userEmail || !role) {
+        return res.status(400).json({
+          success: false,
+          error: "userEmail and role are required",
+        });
+      }
+
+      if (!Object.values(APPROVER_ROLES).includes(role)) {
+        return res.status(400).json({
+          success: false,
+          error: "Invalid approver role",
+        });
+      }
+
+      const user = await User.findOne({
+        email: userEmail,
+      });
+
+      if (!user) {
+        return res.status(404).json({
+          success: false,
+          error: "Guardian X user not found",
+        });
+      }
+
+      const existingApprover =
+        await Approver.findOne({
+          userEmail,
+        });
+
+      if (existingApprover) {
+        return res.status(409).json({
+          success: false,
+          error: "Approver already exists",
+        });
+      }
+
+      const approver =
+        await Approver.create({
+          approverId: crypto.randomUUID(),
+          userEmail,
+          role,
+          status: APPROVER_STATUS.ACTIVE,
+          verifiedAt: new Date(),
+          verifiedBy: normalizeEmail(req.user.email),
+        });
+
+      await recordAudit(
+        "APPROVER_CREATED",
+        req.user.email,
+        true
+      );
+
+      return res.status(201).json({
+        success: true,
+        approver: {
+          approverId: approver.approverId,
+          userEmail: approver.userEmail,
+          role: approver.role,
+          status: approver.status,
+          verifiedAt: approver.verifiedAt,
+        },
+      });
+    } catch (err) {
+      console.error(
+        "Approver creation error:",
+        err
+      );
+
+      await recordAudit(
+        "APPROVER_CREATE_FAILED",
+        req.user?.email || "",
+        false
+      );
+
+      return res.status(500).json({
+        success: false,
+        error: "Unable to create approver",
+      });
+    }
+  }
+);
+
+// =====================================
 // ROOT ROUTE
 // =====================================
 app.get(
